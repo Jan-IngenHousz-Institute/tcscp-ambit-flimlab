@@ -12,7 +12,10 @@ Before the first measurement on a new PC:
      (Manual alternative: Felix_WinUSB_driver.exe from https://tediel.com/resources.)
   3. Close TDC-Software: only one program can open the Felix.
 
-Output:   runs\<timestamp>_gui\ next to phi2gui.exe
+IRF:      the instrument response for the lifetime fits is shipped (261104 black plastic, 50 %);
+          "Add IRF file..." takes a TDC-Software histogram export (CSV) and remembers it.
+Rule:     the Felix window must be at most half of the shortest pause (the app checks before a run).
+Output:   runs\<timestamp>_gui\ next to phi2gui.exe (raw.png shows the raw data of every run)
 Settings: %APPDATA%\phi2gui\phi2gui.json  (openJII API key, last used ports)
 Log:      phi2gui.log next to phi2gui.exe  (send it along when reporting a problem)
 

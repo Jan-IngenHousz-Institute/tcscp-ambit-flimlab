@@ -53,7 +53,9 @@ The measurement of notebook 4 with its results and the upload to openJII, as a d
   [Releases page](https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab/releases),
   extract the whole zip, double-click `phi2gui\phi2gui.exe`, see the `README.txt` inside. With the
   Felix plugged in, the app offers to install its WinUSB driver on first use (administrator prompt
-  once, then a two-click wizard). It bundles
+  once, then a two-click wizard). The IRF of `irf-library/` is shipped as the default; "Add IRF file..."
+  takes another TDC-Software export. Every run gets a "Raw data" tab (and `raw.png`), also when the
+  fits fail, and a run is refused when the Felix window is longer than half a pause. It bundles
   TEDIEL's `pylibtdc` (the free download from [tediel.com/resources](https://tediel.com/resources));
   a Felix with a valid licence is still needed. Build it with `build_phi2gui.bat`.
 - **From source**: clone or download this repository, install the requirements above, then

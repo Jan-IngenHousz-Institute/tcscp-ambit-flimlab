@@ -7,6 +7,7 @@ The analysis modules draw with pyplot on the Agg backend; their figures are embe
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import time
 import traceback
@@ -87,7 +88,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.felix = None
         self.client: oj.OpenJIIClient | None = None
         self.experiments: list[oj.Experiment] = []
-        self.irf = bd.load_irf()
+        self.irf: dict | None = None
+        self.irf_dir = oj.config_dir() / "irf-library"        # the user's own IRF files (Add IRF file...)
         self.session = RUNS_DIR / (time.strftime("%Y%m%d_%H%M%S") + "_gui")
         self.run_dir: Path | None = None
         self.res: dict | None = None
@@ -96,11 +98,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_ui()
         self._load_settings()
         self._rescan_ports()
+        self._refresh_irfs(select=str(self.settings.get("irf", "")))
         QtCore.QTimer.singleShot(800, self._check_driver_at_start)     # once the window is up
-        if self.irf is None:
-            self._log("WARNING: no IRF file in irf-library: the decays will not be fitted, no lifetime phi2")
-        else:
-            self._log(f"IRF: {self.irf.get('name', '')}")
 
     # ------------------------------------------------------------------ ui
     def _build_ui(self) -> None:
@@ -134,6 +133,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_rates.clicked.connect(self._read_rates)
         self.lbl_rates = QtWidgets.QLabel("-")
         f.addRow(self.btn_rates, self.lbl_rates)
+        self.irf_combo = QtWidgets.QComboBox()
+        self.irf_combo.setToolTip("Instrument response for the reconvolution fits: the shipped default, "
+                                  "or a TDC-Software histogram export you added")
+        self.irf_combo.currentIndexChanged.connect(self._irf_changed)
+        self.btn_irf = QtWidgets.QPushButton("Add IRF file...")
+        self.btn_irf.clicked.connect(self._add_irf)
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.irf_combo, 1)
+        row.addWidget(self.btn_irf)
+        f.addRow("IRF", row)
+        self.lbl_irf = QtWidgets.QLabel("")
+        self.lbl_irf.setWordWrap(True)
+        f.addRow("", self.lbl_irf)
         lay.addWidget(g)
 
         # openJII
@@ -183,8 +195,9 @@ class MainWindow(QtWidgets.QMainWindow):
         f.addRow("Dark points before and after", self.spin_dark)
         self.spin_block = _spin(0.02, 5.0, 0.2, 2, 0.05, " s")
         f.addRow("Lit block", self.spin_block)
-        self.pauses_edit = QtWidgets.QLineEdit("1,1,1,1")
-        self.pauses_edit.setToolTip("AMBIT points per pause, one entry per pause (1 point = ~10 ms dark at 100 Hz)")
+        self.pauses_edit = QtWidgets.QLineEdit("2,2,2,2")
+        self.pauses_edit.setToolTip("AMBIT points per pause, one entry per pause (1 point = ~10 ms dark at 100 Hz; "
+                                    "the Felix window must be at most half of a pause)")
         f.addRow("Pauses (points each)", self.pauses_edit)
         self.spin_freq = _spin(1, 2000, 100, suffix=" Hz")
         f.addRow("AMBIT sampling", self.spin_freq)
@@ -289,6 +302,60 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _env(self) -> oj.Environment:
         return oj.ENVIRONMENTS[self.env_combo.currentData()]
+
+    # ------------------------------------------------------------------- IRF
+    def _refresh_irfs(self, select: str = "") -> None:
+        """List the IRF files (the user's own folder first, then the shipped ones) and load
+        ``select`` (a file name) or the shipped default."""
+        files = bd.list_irfs([self.irf_dir])
+        self.irf_combo.blockSignals(True)
+        self.irf_combo.clear()
+        for p in files:
+            self.irf_combo.addItem(p.name, str(p))
+        i = self.irf_combo.findText(select) if select else -1
+        if i < 0:
+            i = self.irf_combo.findText(bd.DEFAULT_IRF_NAME)
+        self.irf_combo.setCurrentIndex(max(i, 0))
+        self.irf_combo.blockSignals(False)
+        self._irf_changed()
+
+    def _irf_changed(self) -> None:
+        path = self.irf_combo.currentData()
+        try:
+            self.irf = bd.load_irf(path) if path else None
+        except Exception as exc:
+            self.irf = None
+            self._log(f"ERROR: could not read the IRF {path}: {exc}")
+        if self.irf is None:
+            self.lbl_irf.setText("NO IRF: the decays will not be fitted, no lifetime phi2. "
+                                 "Add one with 'Add IRF file...' (a TDC-Software histogram export).")
+            self.lbl_irf.setStyleSheet(f"color: {RED}; font-weight: bold")
+            self._log("WARNING: no IRF: the decays will not be fitted, no lifetime phi2")
+            return
+        self.lbl_irf.setText(f"{self.irf['name']}: {self.irf['bin_s'] * 1e12:.2f} ps bins, "
+                             f"{self.irf['counts'].sum():,.0f} counts")
+        self.lbl_irf.setStyleSheet("color: gray")
+        self.settings.set("irf", self.irf["name"])
+        self._log(f"IRF: {self.irf['name']}")
+
+    def _add_irf(self) -> None:
+        """Copy a TDC-Software histogram export into the user's IRF folder and select it."""
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "IRF file (TDC-Software histogram export)", "",
+                                                        "CSV files (*.csv);;All files (*)")
+        if not path:
+            return
+        src = Path(path)
+        try:
+            bd.load_irf(src)                                 # readable as an IRF?
+            self.irf_dir.mkdir(parents=True, exist_ok=True)
+            dst = self.irf_dir / src.name
+            if src.resolve() != dst.resolve():
+                shutil.copy2(src, dst)
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "IRF", f"{src.name} could not be used as an IRF:\n{exc}")
+            return
+        self._log(f"IRF added: {dst}")
+        self._refresh_irfs(select=src.name)
 
     # ----------------------------------------------------------- instruments
     def _rescan_ports(self) -> None:
@@ -566,6 +633,10 @@ class MainWindow(QtWidgets.QMainWindow):
         except ValueError as exc:
             QtWidgets.QMessageBox.warning(self, "Protocol", str(exc))
             return
+        warn = ap.window_check(protocol, self.spin_window.value() / 1e3)
+        if warn:                                             # the pauses would yield no decay
+            QtWidgets.QMessageBox.warning(self, "Felix window vs pauses", warn)
+            return
         label = self.label_edit.text().strip() or "run"
         out = self.session / f"pauses_{label}_{time.strftime('%H%M%S')}"
         params = dict(window_s=self.spin_window.value() / 1e3, note=self.note_edit.text().strip(),
@@ -577,8 +648,12 @@ class MainWindow(QtWidgets.QMainWindow):
         def fn(log):
             d = ap.run_pauses(ambit, felix, out, protocol, log=log, **params)
             log("analysing (reconvolution fits) ...")
-            res = ap.analyse_pauses(d, irf=irf)
-            return d, res, ap.run_summary(res, fo, fm)
+            try:
+                res = ap.analyse_pauses(d, irf=irf)
+                return d, res, ap.run_summary(res, fo, fm)
+            except Exception as exc:                         # the raw data are shown anyway
+                log(f"ERROR: analysis failed: {exc}")
+                return d, None, None
 
         self._busy(True)
         self._log(f"run: {out.name}")
@@ -587,7 +662,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _run_done(self, result) -> None:
         self._busy(False)
         self._show_run(*result)
-        if self.chk_upload.isChecked():
+        if self.chk_upload.isChecked() and self.summary is not None:
             self._upload_current()
 
     def _open_run_dialog(self) -> None:
@@ -606,8 +681,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         def fn(log):
             log(f"analysing {path.name} ...")
-            res = ap.analyse_pauses(path, irf=irf)
-            return path, res, ap.run_summary(res, fo, fm)
+            try:
+                res = ap.analyse_pauses(path, irf=irf)
+                return path, res, ap.run_summary(res, fo, fm)
+            except Exception as exc:                         # the raw data are shown anyway
+                log(f"ERROR: analysis failed: {exc}")
+                return path, None, None
 
         if threaded:
             self._busy(True)
@@ -615,14 +694,25 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self._show_run(*fn(self._log))
 
-    def _show_run(self, run_dir: Path, res: dict, summ: dict) -> None:
+    def _show_run(self, run_dir: Path, res: dict | None, summ: dict | None) -> None:
         self.run_dir, self.res, self.summary = Path(run_dir), res, summ
+        self._set_figures(res)                               # the raw-data tab first, always
+        if summ is None:
+            self.lbl_title.setText(f"<b>{self.run_dir.name}</b> &nbsp; <span style='color: {RED}'>the analysis "
+                                   "failed (see the log): the raw Felix and AMBIT data are in the 'Raw data' tab</span>")
+            self.lbl_summary.setText("")
+            self.lbl_warnings.setText("")
+            self.table.clear()
+            self.table.setRowCount(0)
+            self.lbl_table_note.setText("")
+            self.tabs.setCurrentIndex(1 if self.tabs.count() > 1 else 0)
+            self.lbl_upload.setText("-")
+            return
         try:
             (self.run_dir / "results.json").write_text(json.dumps(summ, indent=1, default=float), encoding="utf-8")
         except OSError as exc:
             self._log(f"could not save results.json: {exc}")
         self._fill_results(summ)
-        self._set_figures(res)
         self.tabs.setCurrentIndex(0)
         self._log(f"{summ['run']}: phi2 AMBIT {_pm(summ['phi2_ambit'], summ['phi2_ambit_err'])}, "
                   f"phi2 lifetime {_pm(summ['phi2_tau_mean'], summ['phi2_tau_sd'])}"
@@ -723,11 +813,17 @@ class MainWindow(QtWidgets.QMainWindow):
                                     "photon-weighted mean lifetime; t_mean = model-free mean arrival time. "
                                     "phi2 lifetime = (t_amp,Fm - t_amp,Fo) / t_amp,Fm per pause.")
 
-    def _set_figures(self, res: dict) -> None:
+    def _set_figures(self, res: dict | None) -> None:
         while self.tabs.count() > 1:
             w = self.tabs.widget(1)
             self.tabs.removeTab(1)
             w.deleteLater()
+        try:
+            self._add_figure_tab("Raw data", ap.plot_raw(self.run_dir, irf=self.irf, save=True, show=False))
+        except Exception as exc:
+            self._log(f"ERROR: raw-data plot failed: {exc}")
+        if res is None:
+            return
         figs = ap.plot_pauses(res, save=True, show=False, ref="reference")
         for name, fig in zip(("Overview", "Pause zoom", "Fm vs Fo decays"), figs):
             if fig is not None:
@@ -765,7 +861,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spin_level.setValue(int(s.get("level", 255)))
         self.spin_dark.setValue(int(s.get("dark_points", 100)))
         self.spin_block.setValue(float(s.get("block_s", 0.2)))
-        self.pauses_edit.setText(str(s.get("pauses", "1,1,1,1")))
+        self.pauses_edit.setText(str(s.get("pauses", "2,2,2,2")))
         self.spin_freq.setValue(int(s.get("freq", 100)))
         self.spin_window.setValue(float(s.get("window_ms", 5.0)))
         self.spin_fo.setValue(int(s.get("fo_points", ap.FO_POINTS)))

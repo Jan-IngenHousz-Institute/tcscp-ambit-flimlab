@@ -18,4 +18,4 @@ HERE = Path(__file__).resolve().parent
 if str(HERE.parent) not in sys.path:
     sys.path.insert(0, str(HERE.parent))
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"

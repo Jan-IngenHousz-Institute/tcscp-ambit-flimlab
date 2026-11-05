@@ -144,6 +144,28 @@ def predict(protocol: list[dict]) -> list[dict]:
     return rows
 
 
+def window_check(protocol: list[dict], window_s: float) -> str | None:
+    """Why a Felix window of ``window_s`` cannot resolve the pauses of ``protocol``, or None.
+
+    A pause only yields a decay when a window lies fully inside its dark span whatever the window
+    phase, and the LED-edge alignment needs one fully dark window per pause: both hold when
+    window <= dark / 2. Seen on 2026-11-05: 1-point pauses (9.3 ms) with 10 ms windows gave
+    "0 Felix windows" for every pause and lines placed from the nominal latency.
+    """
+    pauses = [r for r in predict(protocol) if r["role"] == "pause"]
+    if not pauses:
+        return None
+    dark = min(r["dark1"] - r["dark0"] for r in pauses)
+    if window_s <= dark / 2:
+        return None
+    r = min(pauses, key=lambda p: p["dark1"] - p["dark0"])
+    overhead = dark - r["pulses"] / r["freq"]              # dark time around the pause's own points
+    need = max(r["pulses"] + 1, int(np.ceil((2 * window_s - overhead) * r["freq"])))
+    return (f"The Felix window ({window_s * 1e3:.0f} ms) is longer than half of the shortest pause "
+            f"({dark * 1e3:.1f} ms dark): no window fits inside it reliably and the LED edges blur. "
+            f"Use a window of at most {max(1, int(dark * 500))} ms, or pauses of at least {need} points.")
+
+
 def describe(protocol: list[dict]) -> str:
     pred = predict(protocol)
     out = [f"{len(protocol)} lines (max {ag.MAX_SEGMENTS}), {sum(s['pulses'] for s in protocol)} AMBIT samples, "
@@ -231,6 +253,9 @@ def run_pauses(ambit: ag.AmbitLink, felix: ag.FelixLink, out_dir, protocol: list
     warn = ag.rejection_warning(felix.tdc_rejection(0.5), rates.get(ag.SPAD_CH, 0))
     if warn:
         raise RuntimeError(warn)         # the run would only produce empty histograms
+    warn = window_check(protocol, window_s)
+    if warn:
+        log("WARNING: " + warn)
     felix.configure_histogram(ag.SYNC_CH, ag.SPAD_CH, 0.0, 1.0 / laser_hz)
     n_win = int(np.ceil((pre_s + ag.NOMINAL_LATENCY_S + duration + tail_s + 0.5) / window_s))
     W = felix.start_windows(window_s, n_win)
@@ -582,6 +607,110 @@ def plot_overview(res: dict, save_to=None, show: bool = True, roll_n: int = 10, 
     fig.tight_layout()
     if save_to:
         fig.savefig(save_to, dpi=110)
+    if show:
+        plt.show()
+    return fig
+
+
+def plot_raw(run_dir, irf: dict | None = None, save: bool = True, show: bool = False):
+    """The raw data of a saved run, before and independent of any fit: SPAD counts per Felix window
+    with the lit blocks and the pauses where the alignment put them (top), the AMBIT trace (middle)
+    and the summed raw decays of the reference line and of every pause (bottom), the IRF overlaid.
+    Drawn by the GUI for every run, also when the analysis fails. Saved as raw.png in ``run_dir``."""
+    import matplotlib.pyplot as plt
+
+    d = load_run(run_dir)
+    meta, bins, ts, W, bin_s, amb = d["meta"], d["bins"], d["ts"], d["W"], d["bin_s"], d["ambit"]
+    per = bins.sum(1)
+    tc = ts + W / 2
+    lines = meta.get("lines", [])
+    lit = [r for r in lines if r["role"] == "lit"]
+    pauses = [r for r in lines if r["role"] == "pause"]
+    darks = [r for r in lines if r["role"] == "dark"]
+    pre = per[ts + W <= -0.02]
+    dark_level = meta.get("dark_counts_per_window") or (float(np.median(pre)) if pre.size else 0.0)
+    align = meta.get("align", {})
+    rates = meta.get("rates_before", {})
+
+    fig, axes = plt.subplots(3, 1, figsize=(14, 11.5), gridspec_kw=dict(height_ratios=[1.2, 0.7, 1.1]))
+    # top: counts per window with the protocol as placed
+    ax = axes[0]
+    ax.semilogy(tc, np.maximum(per, 0.5), "-", lw=0.6, color="k", label=f"SPAD counts per {W * 1e3:.3g} ms window")
+    for r in lit:
+        ax.axvspan(r.get("on_meas", r["on"]), r.get("off_meas", r["off"]), color=_colour(int(r["level"])),
+                   alpha=0.15, lw=0)
+    inside = []
+    for k, r in enumerate(pauses):
+        m = (ts >= r["dark0"]) & (ts + W <= r["dark1"])
+        inside.append(int(m.sum()))
+        ax.axvspan(r["dark0"], r["dark1"], color="tab:blue", alpha=0.3, lw=0, label="pause (dark span)" if k == 0 else None)
+        ax.annotate(f"{int(m.sum())} win", ((r["dark0"] + r["dark1"]) / 2, max(per.max(), 1)), ha="center",
+                    va="bottom", fontsize=7, color="tab:blue")
+    if darks:
+        ax.axvspan(darks[0]["t0"], darks[0]["t1"], color="gray", alpha=0.12, lw=0, label="reference line (laser only)")
+    if dark_level:
+        thr = dark_level + max(10.0 * np.sqrt(max(dark_level, 1.0)), dark_level)
+        ax.axhline(thr, color="tab:red", ls="--", lw=0.8, label="LED-edge threshold")
+    ax.axhline(bd.SPAD_MAX_CPS * W, color="tab:orange", ls=":", lw=0.8, label="SPAD rated max")
+    ax.set_ylabel("counts per window")
+    ax.set_title(f"{Path(run_dir).name}: raw Felix windows (shaded: LED on; blue: pauses placed from "
+                 f"{align.get('mode', '?')}, {align.get('n_intervals', '?')}/{align.get('n_lit', '?')} LED edges found)")
+    ax.legend(fontsize=8, loc="upper left")
+    # middle: AMBIT trace
+    ax = axes[1]
+    for lv in np.unique(amb["actinic"]):
+        mm = amb["actinic"] == lv
+        ax.plot(amb["t"][mm], amb["ratio"][mm], ".", ms=3, color=_colour(int(lv)), label=f"actinic {lv}")
+    for r in lit:
+        ax.axvspan(r.get("on_meas", r["on"]), r.get("off_meas", r["off"]), color=_colour(int(r["level"])), alpha=0.15, lw=0)
+    for r in pauses:
+        ax.axvspan(r["dark0"], r["dark1"], color="tab:blue", alpha=0.3, lw=0)
+    ax.set_ylabel("AMBIT s/r (rel. yield)")
+    ax.set_xlabel("time since the start of the AMBIT run [s]")
+    ax.legend(fontsize=8, loc="upper left")
+    # bottom: raw decays
+    ax = axes[2]
+    t_ns = (np.arange(bins.shape[1]) + 0.5) * bin_s * 1e9
+    if darks:
+        r0 = darks[0]
+        ref_m = (ts >= r0["t0"] + 0.02) & (ts + W <= r0["t1"] - 0.02)
+        ref_name = f"reference: actinic 0 line, {int(ref_m.sum())} windows"
+    else:
+        ref_m = ts + W <= -0.02
+        ref_name = f"reference: before the run, {int(ref_m.sum())} windows"
+    h_ref = bins[ref_m].sum(0) if ref_m.any() else np.zeros(bins.shape[1])
+    ax.semilogy(t_ns, np.maximum(h_ref, 0.5), "-", lw=0.8, color="k", label=f"{ref_name}, {int(h_ref.sum()):,} counts")
+    for k, r in enumerate(pauses):
+        m = (ts >= r["dark0"]) & (ts + W <= r["dark1"])
+        if m.any():
+            h = bins[m].sum(0)
+            ax.semilogy(t_ns, np.maximum(h, 0.5), "-", lw=0.7, alpha=0.8,
+                        label=f"pause {k + 1}: {int(m.sum())} windows, {int(h.sum()):,} counts")
+        else:
+            ax.plot([], [], " ", label=f"pause {k + 1}: no Felix window inside its {(r['dark1'] - r['dark0']) * 1e3:.1f} ms")
+    if irf is not None and h_ref.sum() > 0:
+        try:
+            t_i, c_i = bd._irf_curve(irf, bins.shape[1] * bin_s)
+            shift = t_ns[int(np.argmax(h_ref))] - bd.PEAK_AT_NS           # put the IRF peak on the data peak
+            t_i = (t_i + shift) % (bins.shape[1] * bin_s * 1e9)
+            o = np.argsort(t_i)
+            ax.semilogy(t_i[o], c_i[o] * h_ref.max(), "--", lw=0.8, color="tab:red", label=f"IRF {irf.get('name', '')} (scaled)")
+        except Exception:
+            pass
+    ax.set_xlabel("time in the laser period [ns]")
+    ax.set_ylabel("counts per bin (raw)")
+    ax.set_ylim(bottom=0.5)
+    ax.legend(fontsize=8, loc="upper right")
+    for x in axes:
+        x.grid(alpha=0.3)
+    info = (f"{meta.get('saved', '')}  note: {meta.get('note', '') or '-'}   |   {len(per)} windows of {W * 1e3:.3g} ms, "
+            f"{int(per.sum()):,} counts   |   laser-only level {dark_level / W / 1e3:.0f} kcps, max {per.max() / W / 1e6:.1f} Mcps"
+            f"   |   before the run: SYNC {float(rates.get('0', 0)) / 1e6:.1f} MHz, SPAD {float(rates.get('1', 0)) / 1e3:.0f} kcps"
+            f"   |   windows inside the pauses: {inside}   |   IRF: {irf.get('name') if irf else 'NONE'}")
+    fig.text(0.01, 0.004, info, fontsize=7.5, family="monospace")
+    fig.tight_layout(rect=(0, 0.02, 1, 1))
+    if save:
+        fig.savefig(Path(run_dir) / "raw.png", dpi=110)
     if show:
         plt.show()
     return fig

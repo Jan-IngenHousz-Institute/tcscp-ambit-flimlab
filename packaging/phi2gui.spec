@@ -24,6 +24,8 @@ _drv = ROOT / "docs" / "Felix_WinUSB_driver.exe"
 if not _drv.is_file():
     print(f"WARNING: {_drv} missing: this build cannot install the Felix driver")
 datas = [(str(_drv), "driver")] if _drv.is_file() else []
+# the IRF library (blank_dose.DEFAULT_IRF_NAME is the GUI's default; users add their own via the GUI)
+datas += [(str(p), "irf-library") for p in sorted((ROOT / "irf-library").glob("*.csv"))]
 
 a = Analysis(
     [str(ROOT / "packaging" / "phi2gui_entry.py")],

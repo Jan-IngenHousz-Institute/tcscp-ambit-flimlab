@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import csv
 import json
+import sys
 import threading
 import time
 from pathlib import Path
@@ -30,6 +31,7 @@ import fvfm_lifetime as fl
 
 HERE = Path(__file__).resolve().parent
 IRF_DIR = HERE.parent.parent / "irf-library"
+DEFAULT_IRF_NAME = "261104-IRF-blackplastic-50p-10minwarmup_Histogram 0.csv"   # shipped with the phi2 GUI
 REBIN = fl.REBIN              # 20 x 2.34 ps = 47 ps bins for floors, counts and fits
 PEAK_AT_NS = 2.5              # every decay is rotated so its laser peak sits here
 RISE_NS = 0.5                 # laser-correlated counts from this long before the peak: a scatter
@@ -148,15 +150,41 @@ def _shape(s: dict):
     return t, np.clip(y / y.max(), 1e-4, None)
 
 
-def load_irf(path=None) -> dict | None:
-    """The measured IRF (TDC-Software CSV export: '# ...' header, 'seconds,counts' rows)."""
-    if path is None:
-        found = sorted(IRF_DIR.glob("*.csv"))
+def irf_dirs(extra=()) -> list[Path]:
+    """Folders searched for IRF files, first wins: ``extra`` (e.g. the user's own folder), the
+    folder shipped inside the frozen phi2 GUI, the repository's irf-library."""
+    dirs = [Path(p) for p in extra]
+    if getattr(sys, "frozen", False):
+        dirs.append(Path(getattr(sys, "_MEIPASS", "")) / "irf-library")
+    dirs.append(IRF_DIR)
+    return [d for d in dirs if d.is_dir()]
+
+
+def list_irfs(extra=()) -> list[Path]:
+    """The available IRF files (*.csv), one per file name, the user's own folders first."""
+    out, seen = [], set()
+    for d in irf_dirs(extra):
+        for p in sorted(d.glob("*.csv")):
+            if p.name not in seen:
+                seen.add(p.name)
+                out.append(p)
+    return out
+
+
+def load_irf(path=None, extra=()) -> dict | None:
+    """The measured IRF (TDC-Software CSV export: '# ...' header, 'seconds,counts' rows).
+
+    ``path``: a file, or a file name looked up in ``irf_dirs(extra)``. None: ``DEFAULT_IRF_NAME``
+    when available, else the first file found. Returns None when there is no IRF at all.
+    """
+    if path is None or not Path(path).is_file():
+        found = list_irfs(extra)
         if not found:
             return None
-        path = found[0]
+        want = Path(path).name if path else DEFAULT_IRF_NAME
+        path = next((p for p in found if p.name == want), found[0])
     t, c = np.loadtxt(path, delimiter=",", comments="#", unpack=True)
-    return dict(bin_s=float(t[1] - t[0]), counts=c.astype(float), name=Path(path).name)
+    return dict(bin_s=float(t[1] - t[0]), counts=c.astype(float), name=Path(path).name, path=str(path))
 
 
 def _irf_curve(irf: dict, period_s: float = 1.0 / ag.LASER_REP_RATE_HZ):

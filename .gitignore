@@ -5,3 +5,4 @@ docs/TDCSoftware-2026-09-01-win64.exe
 scripts/ambit-gate/runs/
 __pycache__/
 CAD/.jig_cache/
+irf-library/test-irf/*

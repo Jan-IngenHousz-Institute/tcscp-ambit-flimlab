@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 SETTINGS_PATH = ROOT / "flimgui_settings.json"
-IRF_DIR = ROOT / "irf_library"
+IRF_DIR = ROOT / "irf-library"
 
 
 @dataclass

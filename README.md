@@ -62,6 +62,17 @@ The measurement of notebook 4 with its results and the upload to openJII, as a d
   double-click `phi2gui.bat` in the repository folder (or `python -m phi2gui` from
   `scripts/ambit-gate`). The GitHub release's "Source code" zip is this, not the standalone build.
 
+Uploading to openJII needs a personal API key (web app: Platform > Account > API keys) and an
+experiment you are a member of. A run is **one row** of an *upload table* of the experiment
+(default name `ambit_tcspc_runs`): the metadata, the phi2 results and the fits as nested structs,
+the AMBIT trace and (optionally) every Felix window as nested arrays (`ambit_points.ratio`,
+`felix_windows.counts`, ...). Appending to an existing table needs *contribute* access; the first
+upload creates the table and needs *manage* access (experiment admin). A member who is not an
+admin gets "there is no upload table ... creating one needs manage access": an admin has to upload
+the first run with that table name (from this GUI, or any upload under that name), after which
+everyone's uploads append to it. Tables made by GUI versions up to 0.1.2 (one row per AMBIT sample
+and per Felix window) cannot take the new rows: the GUI switches to the new default name once.
+
 
 
 ## Use

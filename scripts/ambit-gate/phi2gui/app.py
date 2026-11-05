@@ -34,7 +34,7 @@ if getattr(sys, "frozen", False):                       # PyInstaller build: run
     RUNS_DIR = Path(sys.executable).resolve().parent / "runs"
 else:
     RUNS_DIR = HERE.parent / "runs"
-DEFAULT_TABLE = "ambit_tcspc_pauses"
+DEFAULT_TABLE = "ambit_tcspc_runs"                      # one row per run (upload.ROW_FORMAT 2)
 HIGHLIGHT = QtGui.QColor("#fff0a8")
 RED = "#b00000"
 
@@ -564,6 +564,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not np.isfinite(self.summary["phi2_ambit"]) and not np.isfinite(self.summary["phi2_tau_mean"]):
             self._log("upload: this run has no phi2 at all (see the warnings); uploading its raw data anyway")
         client, exp_id = self.client, self.exp_combo.currentData()
+        exp_name = next((e.name for e in self.experiments if e.id == exp_id), "")
         res, summ, run_dir = self.res, self.summary, self.run_dir
         include = self.chk_felix.isChecked()
         label = self.label_edit.text().strip()
@@ -571,9 +572,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.settings.set("table_name", table)
 
         def fn(log):
-            path, n = up.write_ndjson(run_dir, up.run_rows(res, summ, include_felix=include, label=label))
-            log(f"upload: {n} rows written to {path.name} ({path.stat().st_size / 1e6:.1f} MB)")
-            return up.upload_and_wait(client, exp_id, table, path, log=log)
+            path, _ = up.write_ndjson(run_dir, [up.run_row(res, summ, include_felix=include, label=label)])
+            log(f"upload: the run as one row written to {path.name} ({path.stat().st_size / 1e6:.1f} MB)")
+            return up.upload_and_wait(client, exp_id, table, path, log=log, experiment_name=exp_name)
 
         self.btn_upload.setEnabled(False)
         self.lbl_upload.setText("uploading ...")
@@ -595,6 +596,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if "No upload table with id" in text:
             text = ("the platform does not list the new table yet (it appears a few minutes after its "
                     "first upload finished): try again in a minute")
+        elif "experiment management access" in text:         # 403 on targetKind=new, past the pre-check
+            text = up.NO_TABLE_TEXT.format(table=self.table_edit.text().strip(), exp="this experiment")
         self.lbl_upload.setText("failed: " + text.splitlines()[0])
         self._log("ERROR upload: " + text)
 
@@ -854,7 +857,9 @@ class MainWindow(QtWidgets.QMainWindow):
         i = self.env_combo.findData(s.get("env", "prod"))
         self.env_combo.setCurrentIndex(max(i, 0))
         self.key_edit.setText(s.api_key(self.env_combo.currentData()))
-        self.table_edit.setText(s.get("table_name", DEFAULT_TABLE))
+        # a table made by an older row format cannot take the new rows: back to the default name once
+        same_format = s.get("row_format") == up.ROW_FORMAT
+        self.table_edit.setText(s.get("table_name", DEFAULT_TABLE) if same_format else DEFAULT_TABLE)
         self.chk_upload.setChecked(bool(s.get("upload_after_run", False)))
         self.chk_felix.setChecked(bool(s.get("include_felix", True)))
         self.spin_threshold.setValue(float(s.get("threshold_v", ag.THRESHOLD_V)))
@@ -881,6 +886,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.exp_combo.currentData():
             s.set("experiment_id", self.exp_combo.currentData())
         s.set("table_name", self.table_edit.text().strip())
+        s.set("row_format", up.ROW_FORMAT)
         s.set("upload_after_run", self.chk_upload.isChecked())
         s.set("include_felix", self.chk_felix.isChecked())
         s.set("threshold_v", self.spin_threshold.value())

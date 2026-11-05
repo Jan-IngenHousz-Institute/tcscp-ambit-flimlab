@@ -4,8 +4,8 @@
 Build with build_phi2gui.bat in the repo root (or: py -3.13 -m PyInstaller packaging/phi2gui.spec).
 Result: dist/phi2gui/phi2gui.exe plus an _internal folder; zip the phi2gui folder to share it.
 
-The bundle contains the FLIM LABS pylibtdc library (Felix TDC driver bindings), which is not
-ours to publish: share the zip internally, do not attach it to a public GitHub release.
+The bundle includes TEDIEL's pylibtdc (Felix TDC bindings, authored by Politecnico di Milano),
+the same wheel TEDIEL offers as a free download at https://tediel.com/resources.
 """
 import importlib.metadata
 from pathlib import Path
@@ -18,11 +18,18 @@ SRC = ROOT / "scripts" / "ambit-gate"           # phi2gui and the modules it imp
 _tdc = importlib.metadata.distribution("pylibtdc")
 pylibtdc_dlls = [(str(_tdc.locate_file(f)), ".") for f in _tdc.files if f.suffix.lower() == ".dll"]
 
+# TEDIEL's Felix WinUSB driver installer: the GUI offers to run it when the Felix has no driver yet
+# (build_phi2gui.bat downloads it into docs/ when missing).
+_drv = ROOT / "docs" / "Felix_WinUSB_driver.exe"
+if not _drv.is_file():
+    print(f"WARNING: {_drv} missing: this build cannot install the Felix driver")
+datas = [(str(_drv), "driver")] if _drv.is_file() else []
+
 a = Analysis(
     [str(ROOT / "packaging" / "phi2gui_entry.py")],
     pathex=[str(SRC), str(ROOT)],
     binaries=pylibtdc_dlls,
-    datas=[],
+    datas=datas,
     hiddenimports=[
         "pylibtdc",                         # imported lazily inside ambit_gate (open_felix)
         "flimgui.fitting",                  # optional tail fit, imported from the repo root

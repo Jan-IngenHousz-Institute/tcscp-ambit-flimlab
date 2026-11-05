@@ -24,6 +24,7 @@ import ambit_gate as ag                                 # noqa: E402
 import ambit_pause as ap                                # noqa: E402
 import blank_dose as bd                                 # noqa: E402
 
+from . import driver as drv                             # noqa: E402
 from . import openjii as oj                             # noqa: E402
 from . import upload as up                              # noqa: E402
 
@@ -95,6 +96,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_ui()
         self._load_settings()
         self._rescan_ports()
+        QtCore.QTimer.singleShot(800, self._check_driver_at_start)     # once the window is up
         if self.irf is None:
             self._log("WARNING: no IRF file in irf-library: the decays will not be fitted, no lifetime phi2")
         else:
@@ -337,10 +339,12 @@ class MainWindow(QtWidgets.QMainWindow):
         def fn(log):
             f = ag.FelixLink(log=log).open()
             f.set_thresholds(thr)
-            return f, f.count_rates(0.5)
+            rates = f.count_rates(0.5)
+            rates["tdc_rejection"] = f.tdc_rejection(0.5)
+            return f, rates
 
         self.btn_felix.setEnabled(False)
-        self._start_task(fn, self._felix_connected, lambda e: (self._log("ERROR: " + e), self.btn_felix.setEnabled(True)))
+        self._start_task(fn, self._felix_connected, self._felix_failed)
 
     def _felix_connected(self, result) -> None:
         self.felix, rates = result
@@ -349,6 +353,60 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_felix.setText(self.felix.description)
         self._show_rates(rates)
 
+    def _felix_failed(self, text: str) -> None:
+        self._log("ERROR: " + text)
+        self.btn_felix.setEnabled(True)
+        if ag.felix_usb_state().get("problem") == ag.CM_PROB_FAILED_INSTALL:
+            self._offer_driver_install()
+
+    # Felix driver: Windows shows the Felix with problem code 28 when it has no driver yet.
+    def _check_driver_at_start(self) -> None:
+        if ag.felix_usb_state().get("problem") == ag.CM_PROB_FAILED_INSTALL:
+            self._log("the Felix is plugged in but Windows has no driver for it")
+            self._offer_driver_install()
+
+    def _offer_driver_install(self) -> None:
+        path = drv.installer_path()
+        if path is None:
+            self._log(f"the driver installer is not bundled with this build: get it from {drv.DOWNLOAD_URL}")
+            return
+        yes = QtWidgets.QMessageBox.StandardButton.Yes
+        answer = QtWidgets.QMessageBox.question(
+            self, "Felix driver",
+            "The Felix is plugged in, but Windows has no driver for it yet.\n\n"
+            "Install TEDIEL's Felix WinUSB driver now? Windows asks for administrator permission, "
+            "then a short wizard runs (Next, Finish). The Felix is connected afterwards.",
+            yes | QtWidgets.QMessageBox.StandardButton.No, yes)
+        if answer != yes:
+            self._log("driver not installed; 'Connect Felix' asks again")
+            return
+
+        def fn(log):
+            log(f"running {path.name} (administrator permission needed) ...")
+            code = drv.run_installer(path)
+            state = ag.felix_usb_state()
+            for _ in range(20):                                  # Windows binds the driver after dpinst exits
+                if state.get("present") and not state.get("problem"):
+                    break
+                time.sleep(0.5)
+                state = ag.felix_usb_state()
+            return code, state
+
+        self.btn_felix.setEnabled(False)
+        self._start_task(fn, self._driver_installed,
+                         lambda e: (self._log("ERROR: " + e), self.btn_felix.setEnabled(True)))
+
+    def _driver_installed(self, result) -> None:
+        code, state = result
+        self.btn_felix.setEnabled(True)
+        if state.get("present") and not state.get("problem"):
+            self._log(f"Felix driver installed (installer exit code {code}); connecting ...")
+            if self.felix is None:
+                self._toggle_felix()
+        else:
+            self._log(f"the installer finished (exit code {code}) but the Felix still reports problem "
+                      f"{state.get('problem')}: unplug and replug it, then 'Connect Felix'")
+
     def _show_rates(self, rates: dict) -> None:
         sync, spad = rates.get(ag.SYNC_CH, 0.0), rates.get(ag.SPAD_CH, 0.0)
         text = f"SYNC {sync / 1e6:.2f} MHz, SPAD {spad / 1e3:,.0f} kcps"
@@ -356,6 +414,10 @@ class MainWindow(QtWidgets.QMainWindow):
             text += "  (SYNC below the laser rate: laser off or cable?)"
         if spad > bd.SPAD_MAX_CPS:
             text += "  (SPAD saturated)"
+        warn = ag.rejection_warning(rates.get("tdc_rejection", float("nan")), spad)
+        if warn:
+            text += "  (TDC DROPS THE SPAD EVENTS, see the log)"
+            self._log("ERROR: " + warn)
         self.lbl_rates.setText(text)
 
     def _read_rates(self) -> None:
@@ -366,7 +428,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         def fn(log):
             felix.set_thresholds(thr)
-            return felix.count_rates(0.5)
+            rates = felix.count_rates(0.5)
+            rates["tdc_rejection"] = felix.tdc_rejection(0.5)
+            return rates
 
         self._start_task(fn, self._show_rates)
 

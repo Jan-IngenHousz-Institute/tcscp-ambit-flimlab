@@ -9,6 +9,13 @@ This repo contains the files and script to run a fluorimeter (Ambit) and a FLIML
 ![AMBIT–TCSPC adapter](docs/ambit-tcscp-adapter.png)
 
 
+## Wiring
+- Felix powered with 5V supply, SPAD and laser via 9V supply or external usb-c 
+- laser SYNC OUT 1 -> Felix SYNC (channel 0), laser at 80 MHz and 50% intensity
+- SPAD SMA -> Felix CH1 (channel 1)
+- AMBIT on a USB-serial adapter, 115200 8N1 (DTR/RTS are held low so opening the port
+  does not reset the board)
+
 
 ## Measurement approach
 
@@ -37,12 +44,23 @@ Python 3.13 with `pyserial`, `numpy`, `matplotlib`, `scipy` (for the tail fit th
 `flimgui/fitting.py`) and `pylibtdc` (cp313 wheel from `docs/pylibtdc-2026-09-01.zip`).
 Close TDC-Software first: only one program can open the Felix.
 
-## Wiring
+## phi2 GUI
 
-- laser SYNC OUT 1 -> Felix SYNC (channel 0), laser at 80 MHz
-- SPAD SMA -> Felix CH1 (channel 1)
-- AMBIT on a USB-serial adapter, 115200 8N1 (DTR/RTS are held low so opening the port
-  does not reset the board)
+The measurement of notebook 4 with its results and the upload to openJII, as a desktop app
+(`scripts/ambit-gate/phi2gui`). Two ways to run it:
+
+- **Standalone build** (no Python needed): download `phi2gui-v<version>-win64.zip` from the
+  [Releases page](https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab/releases),
+  extract the whole zip, double-click `phi2gui\phi2gui.exe`, see the `README.txt` inside. With the
+  Felix plugged in, the app offers to install its WinUSB driver on first use (administrator prompt
+  once, then a two-click wizard). It bundles
+  TEDIEL's `pylibtdc` (the free download from [tediel.com/resources](https://tediel.com/resources));
+  a Felix with a valid licence is still needed. Build it with `build_phi2gui.bat`.
+- **From source**: clone or download this repository, install the requirements above, then
+  double-click `phi2gui.bat` in the repository folder (or `python -m phi2gui` from
+  `scripts/ambit-gate`). The GitHub release's "Source code" zip is this, not the standalone build.
+
+
 
 ## Use
 

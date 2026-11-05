@@ -228,6 +228,9 @@ def run_pauses(ambit: ag.AmbitLink, felix: ag.FelixLink, out_dir, protocol: list
     log("Felix input rates: " + ", ".join(f"ch{c}={r:,.0f}/s" for c, r in rates.items()))
     if rates.get(ag.SYNC_CH, 0) < 0.9 * laser_hz:
         log("WARNING: SYNC rate below the laser repetition rate: check the laser and the SYNC cable")
+    warn = ag.rejection_warning(felix.tdc_rejection(0.5), rates.get(ag.SPAD_CH, 0))
+    if warn:
+        raise RuntimeError(warn)         # the run would only produce empty histograms
     felix.configure_histogram(ag.SYNC_CH, ag.SPAD_CH, 0.0, 1.0 / laser_hz)
     n_win = int(np.ceil((pre_s + ag.NOMINAL_LATENCY_S + duration + tail_s + 0.5) / window_s))
     W = felix.start_windows(window_s, n_win)

@@ -252,6 +252,88 @@ class Window:
     overflow: bool = False
 
 
+FELIX_VID, FELIX_PID = 0x0403, 0x6C68   # USB ids of the Felix (TEDIEL); interface 0 is the WinUSB one
+CM_PROB_FAILED_INSTALL = 28             # Windows problem code: device present, no driver installed
+
+
+def felix_usb_state(interface: int = 0) -> dict:
+    """What Windows itself knows about the Felix USB interface, independent of pylibtdc.
+
+    Returns ``{"present": bool | None, "problem": int | None, "instance": str}``: ``present`` is
+    None on other platforms or when the device tree cannot be read, ``problem`` is the Device
+    Manager problem code (0 = fine, 28 = no driver installed). Lets "No Felix found" say why.
+    """
+    none = {"present": None, "problem": None, "instance": ""}
+    if sys.platform != "win32":
+        return none
+    import ctypes
+    import ctypes.wintypes as wt
+
+    class DevInfoData(ctypes.Structure):
+        _fields_ = [("cbSize", wt.DWORD), ("ClassGuid", ctypes.c_byte * 16),
+                    ("DevInst", wt.DWORD), ("Reserved", ctypes.c_void_p)]
+
+    setupapi, cfgmgr = ctypes.WinDLL("setupapi"), ctypes.WinDLL("cfgmgr32")
+    setupapi.SetupDiGetClassDevsW.restype = ctypes.c_void_p
+    setupapi.SetupDiGetClassDevsW.argtypes = [ctypes.c_void_p, wt.LPCWSTR, wt.HWND, wt.DWORD]
+    setupapi.SetupDiEnumDeviceInfo.argtypes = [ctypes.c_void_p, wt.DWORD, ctypes.POINTER(DevInfoData)]
+    setupapi.SetupDiGetDeviceInstanceIdW.argtypes = [ctypes.c_void_p, ctypes.POINTER(DevInfoData),
+                                                      wt.LPWSTR, wt.DWORD, ctypes.POINTER(wt.DWORD)]
+    setupapi.SetupDiDestroyDeviceInfoList.argtypes = [ctypes.c_void_p]
+    cfgmgr.CM_Get_DevNode_Status.argtypes = [ctypes.POINTER(wt.ULONG), ctypes.POINTER(wt.ULONG),
+                                             wt.DWORD, wt.ULONG]
+    DIGCF_PRESENT, DIGCF_ALLCLASSES = 0x2, 0x4
+    hdev = setupapi.SetupDiGetClassDevsW(None, "USB", None, DIGCF_PRESENT | DIGCF_ALLCLASSES)
+    if not hdev or hdev == ctypes.c_void_p(-1).value:
+        return none
+    needle = f"VID_{FELIX_VID:04X}&PID_{FELIX_PID:04X}&MI_{interface:02d}"
+    try:
+        i = 0
+        while True:
+            dd = DevInfoData(cbSize=ctypes.sizeof(DevInfoData))
+            if not setupapi.SetupDiEnumDeviceInfo(hdev, i, ctypes.byref(dd)):
+                return {"present": False, "problem": None, "instance": ""}
+            i += 1
+            buf, n = ctypes.create_unicode_buffer(512), wt.DWORD()
+            if not setupapi.SetupDiGetDeviceInstanceIdW(hdev, ctypes.byref(dd), buf, 512, ctypes.byref(n)):
+                continue
+            if needle not in buf.value.upper():
+                continue
+            status, problem = wt.ULONG(), wt.ULONG()
+            cfgmgr.CM_Get_DevNode_Status(ctypes.byref(status), ctypes.byref(problem), dd.DevInst, 0)
+            return {"present": True, "problem": int(problem.value), "instance": buf.value}
+    finally:
+        setupapi.SetupDiDestroyDeviceInfoList(hdev)
+
+
+def felix_usb_hint() -> str:
+    """One sentence on why pylibtdc sees no Felix, from the Windows device tree."""
+    st = felix_usb_state()
+    if st["present"] is None:
+        return "Check the USB cable and the 5 V supply, and close TDC-Software (one program at a time)."
+    if not st["present"]:
+        return "No Felix on USB: check the USB cable and the 5 V supply."
+    if st["problem"] == CM_PROB_FAILED_INSTALL:
+        return ("The Felix is plugged in but Windows has no driver for it: install TEDIEL's Felix WinUSB "
+                "driver (the phi2 GUI offers to do it; also at https://tediel.com/resources).")
+    if st["problem"]:
+        return f"The Felix is plugged in but Windows reports problem code {st['problem']} for it (Device Manager)."
+    return ("The Felix is plugged in with its driver but could not be opened: close TDC-Software "
+            "(only one program can use the Felix), or unplug and replug it.")
+
+
+REJECTION_WARN = 0.5                    # TDC drop fraction above which the Felix is declared wedged
+
+
+def rejection_warning(rejection: float, spad_cps: float = float("inf")) -> str | None:
+    """Warning text when ``FelixLink.tdc_rejection`` says the TDC drops the SPAD events, else None
+    (ignored below 10 kcps, where the fraction is noise)."""
+    if rejection != rejection or rejection <= REJECTION_WARN or spad_cps < 1e4:
+        return None
+    return (f"the Felix TDC drops {rejection:.0%} of the SPAD events: the histograms would be empty. "
+            "Unplug and replug the Felix (or power-cycle it) and reconnect")
+
+
 class FelixLink:
     def __init__(self, serial_hint: str = "", log=print):
         self.log = log
@@ -295,8 +377,7 @@ class FelixLink:
         backend = tdc.TDCBackend()          # never pass a callback: it aborts the process
         devices = backend.getDevices()
         if not devices:
-            raise RuntimeError("No Felix found. Check the WinUSB driver, USB cable and 5 V "
-                               "supply, and close TDC-Software (one program at a time).")
+            raise RuntimeError("No Felix found. " + felix_usb_hint())
         dev = devices[0]
         if self.serial_hint:
             for d in devices:
@@ -375,6 +456,28 @@ class FelixLink:
         offset = 1 if len(vals) > n_ch else 0    # older firmware prepends an internal counter
         return {ch: vals[ch + offset] / t_int for ch in range(n_ch)
                 if ch + offset < len(vals) and t_int > 0}
+
+    def tdc_rejection(self, integration_s: float = 0.5, channel: int = SPAD_CH) -> float:
+        """Fraction of the events arriving on ``channel`` that the TDC core drops: growth of the
+        channel's dead-time counter against the input counter over ``integration_s``.
+
+        About 0 when healthy. 1.0 is the wedged state seen on 2026-11-05: input rates looked fine
+        while every histogram window came back empty ("no laser peak"); a power cycle of the Felix
+        cleared it, no register had changed. NaN when the registers cannot be read.
+        """
+        try:
+            ch = self.channels[channel]
+            prop = ch.channel_property
+            d0 = ch.get(prop.DEADCOUNT_R)
+            self.counter.setIntegrationTime(float(integration_s))
+            _t_int, counts = self.counter.getCounts()
+            d1 = ch.get(prop.DEADCOUNT_R)
+            vals = list(counts)
+            offset = 1 if len(vals) > len(self.channels) else 0
+            n_in = vals[channel + offset] if channel + offset < len(vals) else 0
+            return ((d1 - d0) % (1 << 32)) / n_in if n_in > 1000 else 0.0
+        except Exception:
+            return float("nan")
 
     def configure_histogram(self, ref=SYNC_CH, meas=SPAD_CH, left_s=0.0,
                             right_s=1.0 / LASER_REP_RATE_HZ, bin_s=None) -> None:
@@ -499,6 +602,9 @@ def run_gated(ambit: AmbitLink, felix: FelixLink, protocol=None, window_s=WINDOW
     if rates.get(SYNC_CH, 0) < 0.9 * laser_hz:
         log("WARNING: SYNC rate below the laser repetition rate. Check SYNC cable, laser mode, "
             "threshold.")
+    warn = rejection_warning(felix.tdc_rejection(0.5), rates.get(SPAD_CH, 0))
+    if warn:
+        log("WARNING: " + warn)
     felix.configure_histogram(SYNC_CH, SPAD_CH, 0.0, 1.0 / laser_hz)
 
     log(f"Felix: {n_windows} windows of {window_s*1e3:.0f} ms ...")
@@ -783,6 +889,12 @@ def main(argv=None) -> int:
             felix.set_thresholds(args.threshold)
             rates = felix.count_rates(0.5)
             print("Felix input rates: " + ", ".join(f"ch{c}={r:,.0f}/s" for c, r in rates.items()))
+            rej = felix.tdc_rejection(0.5)
+            print(f"Felix TDC drops {rej:.1%} of the SPAD events" if rej == rej else
+                  "Felix TDC rejection: not readable")
+            warn = rejection_warning(rej, rates.get(SPAD_CH, 0))
+            if warn:
+                problems.append("Felix: " + warn)
         except Exception as exc:
             problems.append(f"Felix: {exc}")
         if problems:

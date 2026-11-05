@@ -6,8 +6,8 @@ rem
 rem Needs Python 3.13 with requirements.txt, pylibtdc (wheel in docs\pylibtdc-*.zip) and
 rem pyinstaller installed. Same Python rule as phi2gui.bat: never the conda one.
 rem
-rem The zip contains the FLIM LABS pylibtdc library: share it internally (OneDrive, Teams),
-rem do not attach it to the public GitHub repo.
+rem The zip bundles TEDIEL's pylibtdc (free download at https://tediel.com/resources); attach it
+rem to the GitHub release:  gh release upload v<version> dist\phi2gui-v<version>-win64.zip
 
 setlocal
 set "PYTHONPATH="
@@ -20,6 +20,11 @@ where py >nul 2>nul || set "PY=C:\Python313\python.exe"
 %PY% -c "import sys; sys.path.insert(0, r'scripts\ambit-gate'); import phi2gui; print(phi2gui.__version__)" > "%TEMP%\phi2gui_version.txt" || goto :fail
 set /p VER=<"%TEMP%\phi2gui_version.txt"
 if "%VER%"=="" goto :fail
+
+if not exist docs\Felix_WinUSB_driver.exe (
+    echo Fetching TEDIEL's Felix WinUSB driver installer into docs\ ...
+    curl -L -o docs\Felix_WinUSB_driver.exe https://tediel.com/wp-content/Resources/Felix/Felix_WinUSB_driver.exe || goto :fail
+)
 
 echo Building phi2gui v%VER% ...
 %PY% -m PyInstaller --noconfirm --clean --distpath dist --workpath build packaging\phi2gui.spec || goto :fail

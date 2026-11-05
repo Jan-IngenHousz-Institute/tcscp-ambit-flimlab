@@ -6,3 +6,10 @@ scripts/ambit-gate/runs/
 __pycache__/
 CAD/.jig_cache/
 irf-library/test-irf/*
+old-readme.md
+scripts/compute_FWHM.ipynb
+scripts/felix_decay_hist.py
+
+# PyInstaller output (build_phi2gui.bat)
+build/
+dist/

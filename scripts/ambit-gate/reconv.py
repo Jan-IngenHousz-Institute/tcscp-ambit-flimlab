@@ -21,12 +21,26 @@ peak); its ``share`` of the photons (a tau over the whole decay). The amplitude 
 fit equally well with a twice as large and tau twice as short, so a comes out far above the data
 and means nothing; only a tau (the photons) is determined.
 
-The summary lifetime reported is ``tau_int`` = photon-weighted mean lifetime of all components,
-sum(a tau^2) / sum(a tau): the model's counterpart of the model-free mean arrival time, with its
-uncertainty from the fit covariance. ``t_avg`` (amplitude-weighted, sum(a tau) / sum(a) over the
-resolved components) is still in the result for comparison but is not shown anywhere: it gives a
-barely resolved fast component ~40 % of the weight and jumps to tau2 when that component crosses
-the resolution limit.
+Every decay is fitted with one exponential and with two. The two-exponential model is kept only
+when it lowers the deviance (-2 log L) by at least ``DEV_2EXP`` (10 for two more parameters: a
+chi2 with 2 degrees of freedom at p < 0.01). Otherwise the decay is a single exponential, reported
+in slot 2 (the "slow" one), and slot 1 is *empty*: share 0, no lifetime, no error (``empty``),
+left out of ``tau_int``, and out of the covariance, which comes from the one-exponential fit. At
+the counts of a 10 ms pause (~1e4 photons) a single exponential is otherwise split into two
+nearly equal lifetimes whose errors, propagated through that degeneracy, are 2-20 times the real
+scatter; with the choice they match it (synthetic decays). A component of the two-exponential
+fit that still ends up with (almost) no photons, share below ``EMPTY_SHARE``, is empty all the
+same (its two parameters would make the covariance singular), and so is an unresolved component
+below ``EMPTY_SHARE_UNRESOLVED``, which is degenerate with the IRF shift.
+
+Two summary lifetimes are reported, both with their uncertainty from the fit covariance.
+``t_avg_all`` (t_amp) = amplitude-weighted lifetime of the components with photons,
+sum(a tau) / sum(a): proportional to the fluorescence yield (the same radiative rate for every
+component), so phi2 is computed from it; the amplitude of an unresolved component is poorly
+determined (see above), so such a component carries most of its error. ``tau_int`` (t_int) =
+photon-weighted mean lifetime, sum(a tau^2) / sum(a tau): the model's counterpart of the
+model-free mean arrival time, weighted towards the long components, a check of the decay shape.
+``t_avg`` (amplitude-weighted over the resolved components only) is in the result for comparison.
 
 The convolution is done in Fourier space: a sampled periodic exponential has a closed-form DFT, so
 one inverse FFT per model evaluation.
@@ -40,9 +54,13 @@ REBIN = 20               # 20 x 2.34 ps = 47 ps fit bins, as everywhere else
 PEAK_AT_NS = 2.5         # the data and the IRF have their peak here
 START_NS = 1.5           # fit window: from this long before the laser peak (floor + rise) ...
 END_NS = 7.0             # ... to this long after it; the echo starts ~7.7 ns after the peak
-SHIFT_MAX_NS = 0.5
+SHIFT_MAX_NS = 1.0       # the shift also absorbs the IRF-to-peak delay (~-0.35 ns at 1.5 ns) and the
+                         # one-bin jitter of the peak at ~1e4 photons: 0.5 pinned 1 fit in 3 there
 TAU_BOUNDS = ((0.01, 10.0), (0.05, 30.0))
 RESOLVED_FRAC = 0.5      # a component counts as resolved when tau >= this fraction of the IRF FWHM
+EMPTY_SHARE = 1e-3       # a component with a smaller share of the photons is empty: not a parameter
+EMPTY_SHARE_UNRESOLVED = 1e-2   # the same for an unresolved component (degenerate with the IRF shift)
+DEV_2EXP = 10.0          # the second exponential is kept when it lowers the deviance by at least this
 
 
 def prepare_irf(irf: dict, n_bins: int, bin_s: float, peak_at_ns: float = PEAK_AT_NS) -> dict:
@@ -143,71 +161,122 @@ def fit(h_raw: np.ndarray, bin_s: float, peak_bin: int, irf_p: dict, start_ns: f
     b0 = float(h[pre].mean())
     hp = max(float(c.max()) - b0, 1.0)
 
-    def resid(p):
+    def resid2(p):
         return _dev_residuals(model(p)[win], c)
 
+    def resid1(q):                                 # single exponential: the second amplitude is 0
+        return _dev_residuals(model(np.array([q[0], 0.0, q[1], 1.0, q[2], q[3]]))[win], c)
+
+    # one exponential first: [a, tau, shift, floor]
+    lo1 = np.array([0.0, TAU_BOUNDS[1][0], -SHIFT_MAX_NS, 0.0])
+    hi1 = np.array([np.inf, TAU_BOUNDS[1][1], SHIFT_MAX_NS, np.inf])
+    best1 = None
+    for t_0 in (0.4, 1.5):
+        sol = least_squares(resid1, np.array([1.1 * hp, t_0, 0.0, b0]), bounds=(lo1, hi1), x_scale="jac",
+                            max_nfev=2000)
+        if best1 is None or sol.cost < best1.cost:
+            best1 = sol
+    # then two: [a1, a2, tau1, tau2, shift, floor]; two starts for the fast lifetime and one from the
+    # single exponential with a small fast component added
     lo = np.array([0.0, 0.0, TAU_BOUNDS[0][0], TAU_BOUNDS[1][0], -SHIFT_MAX_NS, 0.0])
     hi = np.array([np.inf, np.inf, TAU_BOUNDS[0][1], TAU_BOUNDS[1][1], SHIFT_MAX_NS, np.inf])
+    a_1, t_1, s_1, b_1 = best1.x
+    starts = [np.array([1.5 * hp, 0.5 * hp, 0.15, 1.6, 0.0, b0]), np.array([1.5 * hp, 0.5 * hp, 0.4, 1.6, 0.0, b0]),
+              np.array([0.2 * a_1, a_1, 0.15, t_1, s_1, b_1])]
     best = None
-    for t1_0 in (0.15, 0.4):                       # two starts for the fast lifetime
-        p0_ = np.array([1.5 * hp, 0.5 * hp, t1_0, 1.6, 0.0, b0])
-        sol = least_squares(resid, p0_, bounds=(lo, hi), x_scale="jac", max_nfev=2000)
+    for p0_ in starts:
+        sol = least_squares(resid2, np.clip(p0_, lo, hi), bounds=(lo, hi), x_scale="jac", max_nfev=2000)
         if best is None or sol.cost < best.cost:
             best = sol
-    p = best.x
-    dof = max(int(win.sum()) - p.size, 1)
-    chi2r = float(np.sum(best.fun ** 2) / dof)
-    # covariance from the Jacobian, with every parameter scaled to its own size first: amplitudes
-    # of ~1e5 next to lifetimes of ~0.05 ns make J^T J too ill-conditioned to invert directly
-    sc = np.maximum(np.abs(p), np.array([1.0, 1.0, 1e-3, 1e-3, 1e-3, 1.0]))
-    Js = best.jac * sc[None, :]
+    dev1, dev2 = 2.0 * best1.cost, 2.0 * best.cost            # deviance = -2 log L (up to a constant)
+    single = bool(dev1 - dev2 < DEV_2EXP)
+    sc_all = np.array([1.0, 1.0, 1e-3, 1e-3, 1e-3, 1.0])
+    if single:
+        # the second exponential does not improve the fit: the decay is one exponential, reported in
+        # slot 2 (the "slow" one); slot 1 is empty
+        s, b = best1.x[2], best1.x[3]
+        taus, amps = np.array([np.nan, best1.x[1]]), np.array([0.0, best1.x[0]])
+        p_full = np.array([0.0, amps[1], 1.0, taus[1], s, b])
+        empty = np.array([True, False])
+        k = np.array([1, 3, 4, 5])                               # a2 t2 s b of the sorted basis
+        J, ps_k, lo_k, hi_k = best1.jac, best1.x, lo1, hi1
+        n_par, cost = 4, best1.cost
+    else:
+        p = best.x
+        a1, a2, t1, t2, s, b = p
+        order = [0, 1] if t1 <= t2 else [1, 0]                   # component 1 = the shorter lifetime
+        taus, amps = np.array([t1, t2])[order], np.array([a1, a2])[order]
+        idx = [order[0], order[1], 2 + order[0], 2 + order[1], 4, 5]   # the sorted basis [a1 a2 t1 t2 s b]
+        p_full = p[idx]
+        n_ph = amps * taus / bw
+        share = n_ph / n_ph.sum() if n_ph.sum() > 0 else np.full(2, np.nan)
+        wide = taus >= RESOLVED_FRAC * irf_p["fwhm_ps"] * 1e-3
+        # a component with (almost) no photons is empty all the same: its amplitude and lifetime are
+        # not parameters (their columns of the Jacobian are ~0, J^T J singular, every error nan). An
+        # unresolved component with a tiny share too: it is degenerate with the IRF shift, and the
+        # covariance through that degeneracy overstates every error
+        empty = ~(share >= EMPTY_SHARE) | (~wide & ~(share >= EMPTY_SHARE_UNRESOLVED))
+        if empty.all():
+            empty[:] = False
+        active = np.array([~empty[0], ~empty[1], ~empty[0], ~empty[1], True, True])
+        k = np.flatnonzero(active)
+        J, ps_k, lo_k, hi_k = best.jac[:, idx][:, k], p_full[k], lo[idx][k], hi[idx][k]
+        n_par, cost = 6, best.cost
+    dof = max(int(win.sum()) - n_par, 1)
+    chi2r = float(2.0 * cost / dof)
+    # covariance from the Jacobian over the active parameters, each scaled to its own size first:
+    # amplitudes of ~1e5 next to lifetimes of ~0.05 ns make J^T J too ill-conditioned to invert directly
+    sc = np.maximum(np.abs(ps_k), sc_all[k])
+    Js = J * sc[None, :]
+    cov = np.zeros((6, 6))                                       # 0 for the parameters of an empty component
     try:
-        cov = np.linalg.inv(Js.T @ Js) * np.outer(sc, sc) * max(chi2r, 1.0)
+        cov[np.ix_(k, k)] = np.linalg.inv(Js.T @ Js) * np.outer(sc, sc) * max(chi2r, 1.0)
     except np.linalg.LinAlgError:
-        cov = np.full((p.size, p.size), np.nan)
-    a1, a2, t1, t2, s, b = p
-    order = [0, 1] if t1 <= t2 else [1, 0]                   # component 1 = the shorter lifetime
-    taus, amps = np.array([t1, t2])[order], np.array([a1, a2])[order]
-    idx = [order[0], order[1], 2 + order[0], 2 + order[1], 4, 5]
-    cov = cov[np.ix_(idx, idx)]                              # covariance in the sorted basis [a1 a2 t1 t2 s b]
+        cov[:] = np.nan
     err = np.sqrt(np.clip(np.diag(cov), 0, None))
+    err[[i for i in range(6) if i not in k]] = np.nan
     taus_err, amps_err = err[2:4], err[0:2]
-    full = model(p)
-    comps = [model.component(amps[i], taus[i], s) for i in range(2)]
+    full = model(p_full)
+    comps = [np.zeros(model.nr) if empty[i] else model.component(amps[i], taus[i], s) for i in range(2)]
     pk = int(np.argmax(full))
-    peak_amps = np.array([cc[pk] for cc in comps])           # counts per 47 ps bin at the decay peak, as drawn
-    n_ph = amps * taus / bw                                  # photons of each component over the whole decay
-    n_ph_err = np.array([np.sqrt(max((taus[i] / bw) ** 2 * cov[i, i] + (amps[i] / bw) ** 2 * cov[2 + i, 2 + i]
-                                     + 2 * amps[i] * taus[i] / bw ** 2 * cov[i, 2 + i], 0.0)) for i in range(2)])
+    peak_amps = np.array([cc[pk] for cc in comps])               # counts per 47 ps bin at the decay peak, as drawn
+    tt = np.where(empty, 1.0, taus)                              # a finite stand-in for an empty component
+    n_ph = np.where(empty, 0.0, amps * tt / bw)                  # photons of each component over the whole decay
+    n_ph_err = np.array([0.0 if empty[i] else
+                         np.sqrt(max((tt[i] / bw) ** 2 * cov[i, i] + (amps[i] / bw) ** 2 * cov[2 + i, 2 + i]
+                                     + 2 * amps[i] * tt[i] / bw ** 2 * cov[i, 2 + i], 0.0)) for i in range(2)])
     share = n_ph / n_ph.sum() if n_ph.sum() > 0 else np.full(2, np.nan)
     resolved_ns = RESOLVED_FRAC * irf_p["fwhm_ps"] * 1e-3
-    resolved = taus >= resolved_ns
+    resolved = (tt >= resolved_ns) & ~empty
 
     def weighted(mask, power):
         """sum(a tau^power) / sum(a tau^(power-1)) over the components in ``mask``, with its error."""
         if not mask.any():
             return float("nan"), float("nan")
-        w = amps * mask
-        num, den = np.sum(w * taus ** power), np.sum(w * taus ** (power - 1))
+        w = np.where(mask, amps, 0.0)
+        num, den = np.sum(w * tt ** power), np.sum(w * tt ** (power - 1))
         if den <= 0:
             return float("nan"), float("nan")
         val = num / den
         g = np.zeros(6)
-        g[0:2] = mask * (taus ** power - val * taus ** (power - 1)) / den
-        g[2:4] = mask * (power * amps * taus ** (power - 1) - val * (power - 1) * amps * taus ** (power - 2)) / den
+        g[0:2] = mask * (tt ** power - val * tt ** (power - 1)) / den
+        g[2:4] = mask * (power * w * tt ** (power - 1) - val * (power - 1) * w * tt ** (power - 2)) / den
         return float(val), float(np.sqrt(max(g @ cov @ g, 0.0)))
 
-    t_avg, t_avg_err = weighted(resolved, 1)                 # amplitude-weighted, resolved components only
-    t_avg_all, t_avg_all_err = weighted(np.ones(2, bool), 1)  # the same over both (meaningless if one is unresolved)
-    tau_int, tau_int_err = weighted(np.ones(2, bool), 2)      # photon-weighted mean lifetime, all components
-    out.update(ok=bool(best.success), taus=taus.tolist(), taus_err=taus_err.tolist(), amps=amps.tolist(),
-               amps_err=amps_err.tolist(), peak_amps=peak_amps.tolist(), n_ph=n_ph.tolist(),
+    t_avg, t_avg_err = weighted(resolved, 1)                     # amplitude-weighted, resolved components only
+    t_avg_all, t_avg_all_err = weighted(~empty, 1)               # the same over both (meaningless if one is unresolved)
+    tau_int, tau_int_err = weighted(~empty, 2)                   # photon-weighted mean lifetime, components with photons
+    at_bound = np.isclose(ps_k, lo_k, atol=1e-6) | np.isclose(ps_k, hi_k, atol=1e-6)
+    out.update(ok=bool((best1 if single else best).success), taus=taus.tolist(), taus_err=taus_err.tolist(),
+               amps=amps.tolist(), amps_err=amps_err.tolist(), peak_amps=peak_amps.tolist(), n_ph=n_ph.tolist(),
                n_ph_err=n_ph_err.tolist(), share=share.tolist(), resolved=resolved.tolist(),
+               empty=empty.tolist(), n_comp=int((~empty).sum()), single=single,
+               deviance=(float(dev1), float(dev2)),
                resolved_ns=float(resolved_ns), t_avg=t_avg, t_avg_err=t_avg_err, t_avg_all=t_avg_all,
                t_avg_all_err=t_avg_all_err, tau_int=tau_int, tau_int_err=tau_int_err,
                shift_ns=float(s), shift_err_ns=float(err[4]), floor=float(b), floor_err=float(err[5]),
                chi2r=chi2r, n_fit=int(win.sum()), model=full, comps=comps, peak_bin=pk, cov=cov,
-               at_bound=bool(np.any(np.isclose(p, lo, atol=1e-6) | np.isclose(p, hi, atol=1e-6))))
+               at_bound=bool(at_bound.any()))
     return out
 
 
@@ -244,6 +313,8 @@ def plot(decays: list, title: str = "", save_to=None, show: bool = True, ylim=No
         t0 = t[pk]
         ax.axhline(r["floor"], color="0.5", lw=0.8, ls="--", label=f"floor {r['floor']:,.1f} /bin")
         for i, (cc, cl) in enumerate(zip(r["comps"], ("tab:blue", "tab:purple"))):
+            if r["empty"][i]:
+                continue
             if lin:
                 ax.fill_between(t, 0, cc, color=cl, alpha=0.15, lw=0)
             ax.plot(t, cc, color=cl, lw=1.2,
@@ -252,11 +323,15 @@ def plot(decays: list, title: str = "", save_to=None, show: bool = True, ylim=No
             ax.plot(t0, cc[pk], "o", color=cl, mec="k", mew=0.6, ms=5, zorder=5)
         ax.step(t, h if lin else np.maximum(h, 0.5), where="mid", color=col, lw=0.8, label="data (47 ps bins)")
         ax.plot(t, m, color="k", lw=0.6, alpha=0.5)
-        ax.plot(t[win], m[win], color="k", lw=1.3, label=f"fit: t_int {r['tau_int']:.3f} ns")
+        ax.plot(t[win], m[win], color="k", lw=1.3,
+                label=f"fit: t_amp {r['t_avg_all']:.3f} ns, t_int {r['tau_int']:.3f} ns")
         ax.plot(t0, m[pk], "o", color="k", ms=5, zorder=5)
         ax.axvline(t0, color="k", ls=":", lw=0.8)
         txt = [f"{h[win].sum():,.0f} counts in the window, chi2r {r['chi2r']:.2f}"]
         for i in range(2):
+            if r["empty"][i]:
+                txt.append(f"{i + 1}: none (no photons: the decay is a single exponential)")
+                continue
             tag = (f"a {r['amps'][i]:,.0f}+-{r['amps_err'][i]:,.0f} /bin before the IRF"
                    if r["resolved"][i] else f"unresolved (< {r['resolved_ns']:.2f} ns): no amplitude")
             txt.append(f"{i + 1}: tau {r['taus'][i]:.3f}+-{r['taus_err'][i]:.3f} ns   {r['peak_amps'][i]:,.0f} /bin "
@@ -264,6 +339,7 @@ def plot(decays: list, title: str = "", save_to=None, show: bool = True, ylim=No
             txt.append(f"   {tag}")
         txt += [f"at t0 = {t0:.2f} ns: {r['peak_amps'][0]:,.0f} + {r['peak_amps'][1]:,.0f} + floor {r['floor']:,.0f}"
                 f" = fit {m[pk]:,.0f}  (data {h[pk]:,.0f})",
+                f"t_amp (amplitude-weighted lifetime) = {r['t_avg_all']:.3f} +- {r['t_avg_all_err']:.3f} ns",
                 f"t_int (photon-weighted mean lifetime) = {r['tau_int']:.3f} +- {r['tau_int_err']:.3f} ns",
                 f"IRF shift {r['shift_ns'] * 1e3:+.1f} +- {r['shift_err_ns'] * 1e3:.1f} ps"
                 + ("   (a parameter at its bound)" if r["at_bound"] else "")]

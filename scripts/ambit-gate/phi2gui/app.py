@@ -7,6 +7,7 @@ The analysis modules draw with pyplot on the Agg backend; their figures are embe
 from __future__ import annotations
 
 import json
+import sys
 import time
 import traceback
 from pathlib import Path
@@ -27,7 +28,10 @@ from . import openjii as oj                             # noqa: E402
 from . import upload as up                              # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-RUNS_DIR = HERE.parent / "runs"
+if getattr(sys, "frozen", False):                       # PyInstaller build: runs/ next to phi2gui.exe
+    RUNS_DIR = Path(sys.executable).resolve().parent / "runs"
+else:
+    RUNS_DIR = HERE.parent / "runs"
 DEFAULT_TABLE = "ambit_tcspc_pauses"
 HIGHLIGHT = QtGui.QColor("#fff0a8")
 RED = "#b00000"
@@ -571,15 +575,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"<span style='color: gray'>Fo = {_pm(s['fo_ambit'], s['fo_ambit_se'], 5)} ({s['n_fo']} points), "
                 f"Fm = {_pm(s['fm_ambit'], s['fm_ambit_se'], 5)} ({s['n_fm']} points); raw s_630 median "
                 f"{_num(s['s_630_fo_median'], 0)} / {_num(s['s_630_fm_median'], 0)} counts</span></p>"
-                f"<p>phi2 from the lifetimes, (tau2,Fm - tau2,Fo) / tau2,Fm = <span style='{big}'>"
+                f"<p>phi2 from the lifetimes, (t_amp,Fm - t_amp,Fo) / t_amp,Fm = <span style='{big}'>"
                 f"{_pm(s['phi2_tau_mean'], s['phi2_tau_sd'])}</span> &nbsp;"
                 f"<span style='color: gray'>mean ± SD of {n} pauses: "
                 f"{', '.join(_num(p) for p in s['phi2_tau'])}</span><br>"
-                f"<span style='color: gray'>tau2 Fo = {_pm(s['tau2_fo'], s['tau2_fo_err'])} ns, "
-                f"t_int Fo = {_pm(s['t_int_fo'], s['t_int_fo_err'])} ns;</span> "
-                f"<span style='background: {HIGHLIGHT.name()}'><b>mean tau2 of the {n} Fm pauses = "
-                f"{_pm(s['tau2_fm_mean'], s['tau2_fm_sd'])} ns</b></span>"
-                f"<span style='color: gray'>, mean t_int {_num(s['t_int_fm_mean'])} ns</span></p>")
+                f"<b>t_amp</b> Fo = {_pm(s['t_amp_fo'], s['t_amp_fo_err'])} ns, "
+                f"<span style='background: {HIGHLIGHT.name()}'><b>mean t_amp of the {n} Fm pauses = "
+                f"{_pm(s['t_amp_fm_mean'], s['t_amp_fm_sd'])} ns</b></span><br>"
+                f"<span style='color: gray'>t_int Fo = {_pm(s['t_int_fo'], s['t_int_fo_err'])} ns, "
+                f"mean t_int of the pauses = {_pm(s['t_int_fm_mean'], s.get('t_int_fm_sd'))} ns; "
+                f"tau2 Fo {_pm(s['tau2_fo'], s['tau2_fo_err'])} ns, mean tau2 of the pauses "
+                f"{_pm(s['tau2_fm_mean'], s['tau2_fm_sd'])} ns</span></p>")
         self.lbl_summary.setText(html)
         if s["warnings"]:
             self.lbl_warnings.setText(f"<ul style='color: {RED}; margin-top: 0'>"
@@ -589,8 +595,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._fill_table(s)
 
     def _fill_table(self, s: dict) -> None:
-        cols = ["decay", "laser counts", "seconds", "tau1 [ns]", "share 1", "tau2 [ns]", "share 2", "t_int [ns]",
-                "t_mean [ns]", "IRF shift [ps]", "chi2r", "phi2 lifetime"]
+        cols = ["decay", "laser counts", "seconds", "tau1 [ns]", "share 1", "tau2 [ns]", "share 2", "t_amp [ns]",
+                "t_int [ns]", "t_mean [ns]", "IRF shift [ps]", "chi2r", "phi2 lifetime"]
         fits = [("reference (Fo): " + s["ref_name"], s["fits"]["reference"], None, None)]
         for k, f in enumerate(s["fits"]["pauses"]):
             fits.append((f"Fm pause {k + 1} ({s['dark_ms'][k]:.0f} ms dark)", f, s["phi2_tau"][k], s["phi2_tau_err"][k]))
@@ -622,28 +628,36 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             put(r, 1, f"{f['counts']:,.0f}")
             put(r, 2, f"{f['seconds']:.3f}")
-            put(r, 3, _pm(f["tau1"], f["tau1_err"]) + ("" if f["resolved1"] else " *"))
-            put(r, 4, f"{100 * f['share1']:.0f} %")
-            put(r, 5, _pm(f["tau2"], f["tau2_err"]) + ("" if f["resolved2"] else " *"))
-            put(r, 6, f"{100 * f['share2']:.0f} %")
-            put(r, 7, _pm(f["t_int"], f["t_int_err"]))
-            put(r, 8, _pm(f["t_mean"], f["t_mean_err"]))
-            put(r, 9, f"{f['shift_ps']:+.0f}")
-            put(r, 10, f"{f['chi2r']:.2f}" + ("  (bound)" if f["at_bound"] else ""))
-            put(r, 11, _pm(phi, perr) if phi is not None else "")
+            for c, i in ((3, 1), (5, 2)):
+                if f.get(f"empty{i}"):
+                    put(r, c, "none", color="gray")
+                    put(r, c + 1, "0 %", color="gray")
+                else:
+                    put(r, c, _pm(f[f"tau{i}"], f[f"tau{i}_err"]) + ("" if f[f"resolved{i}"] else " *"))
+                    put(r, c + 1, f"{100 * f[f'share{i}']:.0f} %")
+            put(r, 7, _pm(f["t_amp"], f["t_amp_err"]))
+            put(r, 8, _pm(f["t_int"], f["t_int_err"]))
+            put(r, 9, _pm(f["t_mean"], f["t_mean_err"]))
+            put(r, 10, f"{f['shift_ps']:+.0f}")
+            put(r, 11, f"{f['chi2r']:.2f}" + ("  (bound)" if f["at_bound"] else ""))
+            put(r, 12, _pm(phi, perr) if phi is not None else "")
         r = len(fits)
         put(r, 0, f"mean of the {n} Fm pauses", bold=True, highlight=True)
         for c in range(1, len(cols)):
             put(r, c, "", highlight=True)
-        put(r, 5, _pm(s["tau2_fm_mean"], s["tau2_fm_sd"]) + "  (± SD)", bold=True, highlight=True)
-        put(r, 7, _num(s["t_int_fm_mean"]), highlight=True)
-        put(r, 11, _pm(s["phi2_tau_mean"], s["phi2_tau_sd"]) + "  (± SD)", bold=True, highlight=True)
+        put(r, 5, _pm(s["tau2_fm_mean"], s["tau2_fm_sd"]) + "  (± SD)", highlight=True)
+        put(r, 7, _pm(s["t_amp_fm_mean"], s["t_amp_fm_sd"]) + "  (± SD)", bold=True, highlight=True)
+        put(r, 8, _pm(s["t_int_fm_mean"], s.get("t_int_fm_sd")) + "  (± SD)", highlight=True)
+        put(r, 12, _pm(s["phi2_tau_mean"], s["phi2_tau_sd"]) + "  (± SD)", bold=True, highlight=True)
         self.table.resizeColumnsToContents()
         self.table.horizontalHeader().setStretchLastSection(True)
         self.lbl_table_note.setText("2-exponential IRF reconvolution fit of every decay (reconv.py): tau1/tau2 with "
-                                    "their fit errors (*: shorter than half the IRF FWHM, unresolved), share = photons "
-                                    "of the component, t_int = photon-weighted mean lifetime, t_mean = model-free mean "
-                                    "arrival time. phi2 lifetime = (tau2,Fm - tau2,Fo) / tau2,Fm per pause.")
+                                    "their fit errors (*: shorter than half the IRF FWHM, unresolved; none: no photons, "
+                                    "the decay is a single exponential), share = photons of the component. t_amp = "
+                                    "amplitude-weighted lifetime, proportional to the yield (the amplitude of an "
+                                    "unresolved component is poorly determined and carries most of its error); t_int = "
+                                    "photon-weighted mean lifetime; t_mean = model-free mean arrival time. "
+                                    "phi2 lifetime = (t_amp,Fm - t_amp,Fo) / t_amp,Fm per pause.")
 
     def _set_figures(self, res: dict) -> None:
         while self.tabs.count() > 1:

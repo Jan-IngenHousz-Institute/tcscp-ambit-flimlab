@@ -688,12 +688,13 @@ def fit_report(res: dict) -> str:
     """Main fit: 2-exponential IRF reconvolution (``reconv.fit``) of every decay, the whole decay
     from 1.5 ns before the peak to 7 ns after it. Per component: the lifetime with its error and
     the share of the photons (``ph``). A lifetime marked ``*`` is below half the IRF FWHM: the IRF
-    cannot separate such a component from scatter, so it has no measurable amplitude. ``t_int``:
-    photon-weighted mean lifetime of all components, the model's counterpart of the model-free
-    ``t_mean``. Then the IRF shift and the reduced chi2. The amplitudes in counts per bin are in
-    the figures (``plot_fits``)."""
+    cannot separate such a component from scatter, so it has no measurable amplitude. ``t_amp``:
+    amplitude-weighted lifetime of the components with photons (proportional to the yield; the
+    amplitude of an unresolved component is poorly determined). ``t_int``: photon-weighted mean
+    lifetime, the model's counterpart of the model-free ``t_mean``. Then the IRF shift and the
+    reduced chi2. The amplitudes in counts per bin are in the figures (``plot_fits``)."""
     out = [f"{'decay':<44} {'laser cts':>9} {'t_mean ns':>15} {'tau1 ns':>13} {'ph1':>4} {'tau2 ns':>13} "
-           f"{'ph2':>4} {'t_int ns':>15} {'shift ps':>8} {'chi2r':>6}"]
+           f"{'ph2':>4} {'t_amp ns':>15} {'t_int ns':>15} {'shift ps':>8} {'chi2r':>6}"]
     for _, group in fit_groups(res):
         for name, s, _c in group:
             if s is None or not s["significant"]:
@@ -705,26 +706,29 @@ def fit_report(res: dict) -> str:
             if r is None or not r.get("ok"):
                 out.append(f"{name:<44} {n:>9,.0f} {tm:>15}   no reconvolution fit (no IRF, or too few counts)")
                 continue
-            (t1, t2), (e1, e2), (p1, p2), (r1, r2) = r["taus"], r["taus_err"], r["share"], r["resolved"]
-            out.append(f"{name:<44} {n:>9,.0f} {tm:>15} {t1:>6.3f}+-{e1:.3f}{' ' if r1 else '*'} {100 * p1:>3.0f}% "
-                       f"{t2:>6.3f}+-{e2:.3f}{' ' if r2 else '*'} {100 * p2:>3.0f}% "
+            comp = [f"{'none':^19} " if r["empty"][i] else
+                    f"{r['taus'][i]:>6.3f}+-{r['taus_err'][i]:.3f}{' ' if r['resolved'][i] else '*'} "
+                    f"{100 * r['share'][i]:>3.0f}% " for i in range(2)]
+            out.append(f"{name:<44} {n:>9,.0f} {tm:>15} {comp[0]}{comp[1]}"
+                       f"{r['t_avg_all']:>6.3f} +- {r['t_avg_all_err']:.3f} "
                        f"{r['tau_int']:>6.3f} +- {r['tau_int_err']:.3f} {r['shift_ns'] * 1e3:>+8.1f} "
                        f"{r['chi2r']:>6.2f}" + ("  (parameter at a bound)" if r["at_bound"] else ""))
     r0 = next((s["rc"] for _, g in fit_groups(res) for _, s, _c in g if s is not None and s.get("rc")), None)
     if r0 is not None:
         out.append(f"(IRF {r0['irf_name']}, FWHM {r0['irf_fwhm_ps']:.0f} ps; fit window {r0['window'][0]:.1f}-"
                    f"{r0['window'][1]:.1f} ns, laser peak at 2.5 ns. *: lifetime below {r0['resolved_ns']:.2f} ns = "
-                   f"half the IRF FWHM, unresolved: no amplitude. ph: share of the photons)")
+                   f"half the IRF FWHM, unresolved: no amplitude. none: a component without photons, the decay "
+                   f"is a single exponential. ph: share of the photons)")
     return "\n".join(out)
 
 
 def levels_report(run_dirs, irf: dict | None = None) -> str:
-    """One table over the runs of ``run_levels``: per level, its reference line (lifetime tau2 of
-    the reconvolution fit, mean arrival, fluorescence relative yield = AMBIT s/r), the lit block
-    (SPAD Mcps, yield) and every pause (tau2 +- error, mean arrival, yield). Each run is analysed
+    """One table over the runs of ``run_levels``: per level, its reference line (t_amp of the
+    reconvolution fit, mean arrival, fluorescence relative yield = AMBIT s/r), the lit block
+    (SPAD Mcps, yield) and every pause (t_amp +- error, mean arrival, yield). Each run is analysed
     with ``analyse_pauses``; to look at one level in full, analyse and plot its folder."""
-    head = (f"{'level':>5} | {'ref tau2 ns':>14} {'t_mean':>6} {'yield':>6} | {'lit Mcps':>8} {'yield':>6} |"
-            + "".join(f" {'pause ' + str(j + 1) + ': ms, tau2 ns, t_mean, yield':<40}|" for j in range(3)))
+    head = (f"{'level':>5} | {'ref t_amp ns':>14} {'t_mean':>6} {'yield':>6} | {'lit Mcps':>8} {'yield':>6} |"
+            + "".join(f" {'pause ' + str(j + 1) + ': ms, t_amp ns, t_mean, yield':<40}|" for j in range(3)))
     out = [head]
     for d in run_dirs:
         res = analyse_pauses(d, irf=irf)
@@ -736,7 +740,7 @@ def levels_report(run_dirs, irf: dict | None = None) -> str:
         lit_lines = [r["line"] for r in res["lines"] if r["role"] == "lit"]
         y_lit = float(np.median(a["ratio"][np.isin(a["line"], lit_lines)])) if lit_lines else float("nan")
         r0 = ref.get("rc") or {}
-        tau = f"{r0['taus'][1]:.3f}+-{r0['taus_err'][1]:.3f}" if r0.get("ok") else "-"
+        tau = f"{r0['t_avg_all']:.3f}+-{r0['t_avg_all_err']:.3f}" if r0.get("ok") else "-"
         lit = res["lit"].get(lv)
         row = (f"{lv:>5} | {tau:>14} {ref['t_mean_ns']:>6.3f} {y_ref:>6.3f} | "
                f"{(lit['total_cps'] / 1e6 if lit else float('nan')):>8.2f} {y_lit:>6.3f} |")
@@ -744,15 +748,15 @@ def levels_report(run_dirs, irf: dict | None = None) -> str:
             sm, rc_ = p["summary"], (p["summary"] or {}).get("rc") or {}
             yp = a["ratio"][(a["t"] > p["dark0"]) & (a["t"] < p["dark1"])]
             cell = (f"{p['dark_ms']:>4.0f} "
-                    + (f"{rc_['taus'][1]:.3f}+-{rc_['taus_err'][1]:.3f} " if rc_.get("ok") else f"{'-':>12} ")
+                    + (f"{rc_['t_avg_all']:.3f}+-{rc_['t_avg_all_err']:.3f} " if rc_.get("ok") else f"{'-':>12} ")
                     + (f"{sm['t_mean_ns']:.3f} " if sm is not None and sm["significant"] else "  -   ")
                     + (f"{yp.mean():.3f}" if yp.size else "  -  "))
             row += f" {cell:<40}|"
         out.append(row)
         for w in res["warnings"]:
             out.append(f"      {w}")
-    out.append("(tau2: the resolved lifetime of the 2-exp IRF reconvolution fit; yield: AMBIT s/r, median "
-               "for ref and lit, mean of the samples in a pause)")
+    out.append("(t_amp: amplitude-weighted lifetime of the 2-exp IRF reconvolution fit; yield: AMBIT s/r, "
+               "median for ref and lit, mean of the samples in a pause)")
     return "\n".join(out)
 
 
@@ -762,8 +766,9 @@ def plot_fits_vs_ref(res: dict, ref: str = "before", save_to=None, show: bool = 
     Each panel: the pause ("Fm n", n = pause number) as points with its reconvolution fit, and behind
     it the laser-only decay ("Fo") as grey points with its fit; no components. Both in counts per
     second per 47 ps bin (raw counts divided by the acquisition time, not normalised), since a pause
-    lasts 25-90 ms and Fo about 1 s. The legend gives tau2 of both and
-    phi2_lifetime = (tau2,Fm - tau2,Fo) / tau2,Fm with its error. ``ref`` (the Fo decay): "before"
+    lasts 25-90 ms and Fo about 1 s. The legend gives t_amp (amplitude-weighted lifetime of the
+    reconvolution fit) and t_int (photon-weighted) of both, and phi2_lifetime = (t_amp,Fm -
+    t_amp,Fo) / t_amp,Fm with its error. ``ref`` (the Fo decay): "before"
     (before the run, laser only), "reference" (the actinic-0 line) or "after" (0.1-1 s after the run)."""
     import matplotlib.pyplot as plt
 
@@ -785,24 +790,25 @@ def plot_fits_vs_ref(res: dict, ref: str = "before", save_to=None, show: bool = 
         ax.set_visible(True)
         s = p["summary"]
         r = (s or {}).get("rc") or {}
-        to, eo = rr["taus"][1], rr["taus_err"][1]
+        to, eo = rr["t_avg_all"], rr["t_avg_all_err"]
         ax.plot(t, rr["h"] / rs["seconds"], "o", ms=2.2, color="0.72", mec="none", label="Fo")
         ax.plot(t[win], rr["model"][win] / rs["seconds"], color="0.5", lw=1.4,
-                label=r"Fo: fit, $\tau_2$" + f" = {to:.3f} \u00b1 {eo:.3f} ns")
+                label=r"Fo: fit, $t_\mathrm{amp}$" + f" = {to:.3f} \u00b1 {eo:.3f} ns, "
+                      + r"$t_\mathrm{int}$" + f" = {rr['tau_int']:.3f} ns")
         top = (rr["h"][win] / rs["seconds"]).max()
         title = f"actinic {p['level']}, pause {p['pause'] + 1}: {p['dark_ms']:.0f} ms dark"
         k = p["pause"] + 1
         if r.get("ok"):
-            tm, em = r["taus"][1], r["taus_err"][1]
+            tm, em = r["t_avg_all"], r["t_avg_all_err"]
             ax.plot(t, r["h"] / s["seconds"], "o", ms=2.2, color=_colour(p["level"]), mec="none", label=f"Fm {k}")
             ax.plot(t[win], r["model"][win] / s["seconds"], color="k", lw=1.3,
-                    label=f"Fm {k}: fit, " + r"$\tau_2$" + f" = {tm:.3f} \u00b1 {em:.3f} ns")
+                    label=f"Fm {k}: fit, " + r"$t_\mathrm{amp}$" + f" = {tm:.3f} \u00b1 {em:.3f} ns, "
+                          + r"$t_\mathrm{int}$" + f" = {r['tau_int']:.3f} ns")
             top = max(top, (r["h"][win] / s["seconds"]).max())
-            phi = (tm - to) / tm
-            phi_err = (to / tm) * np.hypot(eo / to, em / tm)       # phi = 1 - to/tm
+            phi, phi_err = _phi2(to, eo, tm, em)
             ax.legend(fontsize=7, loc="upper right" if yscale != "log" else "lower left", title_fontsize=7.5, markerscale=2.5,
-                      title=r"$\phi_{2,\mathrm{lifetime}} = (\tau_{2,\mathrm{Fm}} - \tau_{2,\mathrm{Fo}})\,/\,"
-                            r"\tau_{2,\mathrm{Fm}}$" + f" = {phi:.3f} \u00b1 {phi_err:.3f}")
+                      title=r"$\phi_{2,\mathrm{lifetime}} = (t_{\mathrm{amp,Fm}} - t_{\mathrm{amp,Fo}})\,/\,"
+                            r"t_{\mathrm{amp,Fm}}$" + f" = {phi:.3f} \u00b1 {phi_err:.3f}")
         else:
             ax.text(0.5, 0.5, "no fit (too few counts)", transform=ax.transAxes, ha="center", fontsize=9)
             ax.legend(fontsize=7, loc="upper right")
@@ -971,14 +977,17 @@ AMBIT_FLOOR_COUNTS = 5.0     # s_630 median below this: the AMBIT fluorescence s
 
 def _fit_numbers(s: dict | None) -> dict | None:
     """The numbers of one decay's reconvolution fit for a table: laser-correlated counts, both
-    lifetimes with errors, resolved flags and photon shares, t_int, IRF shift, chi2r. None without a fit."""
+    lifetimes with errors, resolved and empty flags and photon shares, t_amp, t_int, IRF shift,
+    chi2r. None without a fit."""
     r = (s or {}).get("rc") or {}
     if not r.get("ok"):
         return None
     return dict(counts=float(s["laser_cps"] * s["seconds"] / s["dead_time_factor"]), seconds=float(s["seconds"]),
                 tau1=float(r["taus"][0]), tau1_err=float(r["taus_err"][0]), resolved1=bool(r["resolved"][0]),
-                share1=float(r["share"][0]), tau2=float(r["taus"][1]), tau2_err=float(r["taus_err"][1]),
-                resolved2=bool(r["resolved"][1]), share2=float(r["share"][1]), t_int=float(r["tau_int"]),
+                empty1=bool(r["empty"][0]), share1=float(r["share"][0]),
+                tau2=float(r["taus"][1]), tau2_err=float(r["taus_err"][1]), resolved2=bool(r["resolved"][1]),
+                empty2=bool(r["empty"][1]), share2=float(r["share"][1]),
+                t_amp=float(r["t_avg_all"]), t_amp_err=float(r["t_avg_all_err"]), t_int=float(r["tau_int"]),
                 t_int_err=float(r["tau_int_err"]), shift_ps=float(r["shift_ns"] * 1e3), chi2r=float(r["chi2r"]),
                 at_bound=bool(r["at_bound"]), t_mean=float(s["t_mean_ns"]), t_mean_err=float(s["t_mean_err_ns"]))
 
@@ -992,10 +1001,12 @@ def run_summary(res: dict, fo_points: int = FO_POINTS, fm_points: int = FM_POINT
     last ``fm_points`` lit points (actinic > 3) of the train, phi2 = (Fm - Fo) / Fm, error from the
     scatter of the points. Warned: no points, Fm = 0 (phi2 not computed), Fo = 0 (phi2 = 1, no
     error), Fm not above Fo (phi2 <= 0), the raw s_630 signal at its floor (phi2 meaningless).
-    Lifetimes: tau2 of the reference line (Fo) and of every pause (Fm), phi2_tau = (tau2,Fm -
-    tau2,Fo) / tau2,Fm per pause, mean and SD. Warned: no fit of the reference or of a pause, a
-    pause with tau2 not above the reference. ``fits`` holds the fit numbers of the reference and
-    the pauses for a table (``_fit_numbers``)."""
+    Lifetimes: t_amp (the amplitude-weighted lifetime of the reconvolution fit, proportional to
+    the yield) of the reference line (Fo) and of every pause (Fm), phi2_tau = (t_amp,Fm -
+    t_amp,Fo) / t_amp,Fm per pause, mean and SD; t_int (photon-weighted) and tau2 (the slow
+    component) are kept for the table but not used. Warned: no fit of the reference or of a
+    pause, a pause with t_amp not above the reference. ``fits`` holds the fit numbers of the
+    reference and the pauses for a table (``_fit_numbers``)."""
     a = res["ambit"]
     warnings: list[str] = []
     dark0 = next((r for r in res["lines"] if r["role"] == "dark"), None)
@@ -1033,31 +1044,36 @@ def run_summary(res: dict, fo_points: int = FO_POINTS, fm_points: int = FM_POINT
     if ref_fit is None:
         warnings.append("no reconvolution fit of the reference decay (no IRF, or too few counts): "
                         "phi2 from the lifetimes not defined")
-    to, eo = (ref_fit["tau2"], ref_fit["tau2_err"]) if ref_fit else (float("nan"), float("nan"))
-    ti_o, ei_o = (ref_fit["t_int"], ref_fit["t_int_err"]) if ref_fit else (float("nan"), float("nan"))
+    nan = float("nan")
+    to, eo = (ref_fit["t_amp"], ref_fit["t_amp_err"]) if ref_fit else (nan, nan)       # phi2 uses t_amp
+    ti_o, ei_o = (ref_fit["t_int"], ref_fit["t_int_err"]) if ref_fit else (nan, nan)
+    t2_o, e2_o = (ref_fit["tau2"], ref_fit["tau2_err"]) if ref_fit else (nan, nan)
     row = dict(run=Path(res["run_dir"]).name, note=res.get("note", ""), ref_name=res["ref"]["name"],
                fo_ambit=fo, fo_ambit_se=se_o, n_fo=int(fo_idx.size), fm_ambit=fm, fm_ambit_se=se_m,
                n_fm=int(fm_idx.size), s_630_fo_median=s_med.get("Fo", float("nan")),
                s_630_fm_median=s_med.get("Fm", float("nan")), phi2_ambit=phi_a, phi2_ambit_err=phi_a_err,
-               tau2_fo=to, tau2_fo_err=eo, t_int_fo=ti_o, t_int_fo_err=ei_o,
+               tau2_fo=t2_o, tau2_fo_err=e2_o, t_amp_fo=to, t_amp_fo_err=eo, t_int_fo=ti_o, t_int_fo_err=ei_o,
                laser_fo_kcps=res["ref"]["laser_cps"] / 1e3,
                lit_mcps=max((s["total_cps"] for s in res["lit"].values()), default=float("nan")) / 1e6,
-               tau2_fm=[], tau2_fm_err=[], t_int_fm=[], t_int_fm_err=[], phi2_tau=[], phi2_tau_err=[],
+               tau2_fm=[], tau2_fm_err=[], t_amp_fm=[], t_amp_fm_err=[], t_int_fm=[], t_int_fm_err=[],
+               phi2_tau=[], phi2_tau_err=[],
                dark_ms=[], fits=dict(reference=ref_fit, pauses=[]))
     for p in sorted(res["pauses"], key=lambda q: q["pause"]):
         k = p["pause"] + 1
         f = _fit_numbers(p["summary"])
         row["fits"]["pauses"].append(f)
-        tm, em = (f["tau2"], f["tau2_err"]) if f else (float("nan"), float("nan"))
+        tm, em = (f["t_amp"], f["t_amp_err"]) if f else (nan, nan)
         if f is None:
             warnings.append(f"pause {k}: no fit ({p['n_windows']} Felix windows in {p['dark_ms']:.0f} ms dark)")
         phi, perr = _phi2(to, eo, tm, em)
         if f is not None and ref_fit is not None and np.isfinite(phi) and phi <= 0:
-            warnings.append(f"pause {k}: tau2 Fm ({tm:.3f} ns) is not above tau2 Fo ({to:.3f} ns): phi2 = {phi:.2f}")
-        row["tau2_fm"].append(tm)
-        row["tau2_fm_err"].append(em)
-        row["t_int_fm"].append(f["t_int"] if f else float("nan"))
-        row["t_int_fm_err"].append(f["t_int_err"] if f else float("nan"))
+            warnings.append(f"pause {k}: t_amp Fm ({tm:.3f} ns) is not above t_amp Fo ({to:.3f} ns): phi2 = {phi:.2f}")
+        row["tau2_fm"].append(f["tau2"] if f else nan)
+        row["tau2_fm_err"].append(f["tau2_err"] if f else nan)
+        row["t_amp_fm"].append(tm)
+        row["t_amp_fm_err"].append(em)
+        row["t_int_fm"].append(f["t_int"] if f else nan)
+        row["t_int_fm_err"].append(f["t_int_err"] if f else nan)
         row["phi2_tau"].append(phi)
         row["phi2_tau_err"].append(perr)
         row["dark_ms"].append(p["dark_ms"])
@@ -1071,9 +1087,11 @@ def run_summary(res: dict, fo_points: int = FO_POINTS, fm_points: int = FM_POINT
     t2 = t2[np.isfinite(t2)]
     row["tau2_fm_mean"] = float(t2.mean()) if t2.size else float("nan")
     row["tau2_fm_sd"] = float(t2.std(ddof=1)) if t2.size > 1 else float("nan")
-    ti = np.array(row["t_int_fm"], float)
-    ti = ti[np.isfinite(ti)]
-    row["t_int_fm_mean"] = float(ti.mean()) if ti.size else float("nan")
+    for key in ("t_amp_fm", "t_int_fm"):
+        ti = np.array(row[key], float)
+        ti = ti[np.isfinite(ti)]
+        row[key + "_mean"] = float(ti.mean()) if ti.size else float("nan")
+        row[key + "_sd"] = float(ti.std(ddof=1)) if ti.size > 1 else float("nan")
     row["warnings"] = warnings + list(res["warnings"])
     return row
 
@@ -1084,8 +1102,8 @@ def analyse_light_series(src, irf: dict | None = None, fo_points: int = FO_POINT
     with ``analyse_pauses``; per run: AMBIT Fo = mean s/r of the last ``fo_points`` points of the
     first dark line (the 1 s before the train), Fm = mean of the last ``fm_points`` lit points
     (actinic > 3) of the train, phi2 = (Fm - Fo) / Fm with the error from the scatter of the points;
-    tau2 and t_int of the reference line (Fo) and of every pause (Fm); phi2_tau = (tau2,Fm -
-    tau2,Fo) / tau2,Fm per pause, with their mean and SD. Rows are in run order with the
+    t_amp, t_int and tau2 of the reference line (Fo) and of every pause (Fm); phi2_tau = (t_amp,Fm -
+    t_amp,Fo) / t_amp,Fm per pause, with their mean and SD. Rows are in run order with the
     pre-illumination from run.json (nan if the run has none). Saves series.csv and
     series_results.json in the session folder. Returns dict(session, rows, results)."""
     if isinstance(src, (str, Path)) and (Path(src) / "series.json").exists():
@@ -1109,7 +1127,7 @@ def analyse_light_series(src, irf: dict | None = None, fo_points: int = FO_POINT
         row.update(run_summary(res, fo_points, fm_points))
         rows.append(row)
         log(f"{d.name}: pre {row['actinic']}, Fo {row['fo_ambit']:.4f} Fm {row['fm_ambit']:.4f} phi2 "
-            f"{row['phi2_ambit']:.3f}; tau2 Fo {row['tau2_fo']:.3f} ns, Fm {np.round(row['tau2_fm'], 3).tolist()}, "
+            f"{row['phi2_ambit']:.3f}; t_amp Fo {row['t_amp_fo']:.3f} ns, Fm {np.round(row['t_amp_fm'], 3).tolist()}, "
             f"phi2_tau {row['phi2_tau_mean']:.3f} +- {row['phi2_tau_sd']:.3f}"
             + "".join(f"\n    WARNING: {w}" for w in row["warnings"]))
     ser = dict(session=str(session) if session else "", rows=rows, results=results,
@@ -1119,7 +1137,8 @@ def analyse_light_series(src, irf: dict | None = None, fo_points: int = FO_POINT
                     dict(session=ser["session"], fo_points=fo_points, fm_points=fm_points, rows=rows))
         n_p = max((len(r["phi2_tau"]) for r in rows), default=0)
         scalar = [k for k in rows[0] if not isinstance(rows[0][k], (list, dict))]
-        lists = ("tau2_fm", "tau2_fm_err", "t_int_fm", "t_int_fm_err", "phi2_tau", "phi2_tau_err", "dark_ms")
+        lists = ("tau2_fm", "tau2_fm_err", "t_amp_fm", "t_amp_fm_err", "t_int_fm", "t_int_fm_err", "phi2_tau",
+                 "phi2_tau_err", "dark_ms")
         with open(session / "series.csv", "w", newline="") as fh:
             wr = csv.writer(fh)
             wr.writerow(scalar + [f"{k}_{j + 1}" for k in lists for j in range(n_p)])
@@ -1130,28 +1149,29 @@ def analyse_light_series(src, irf: dict | None = None, fo_points: int = FO_POINT
 
 
 def series_report(ser: dict) -> str:
-    """One line per level: AMBIT Fo, Fm, phi2; tau2 and t_int of the reference line; tau2 of every
-    pause; phi2 from the lifetimes per pause and their mean +- SD."""
-    out = [f"{'pre':>4} {'wait s':>6} {'Fo_A':>7} {'Fm_A':>7} {'phi2_A':>13} | {'tau2 Fo ns':>13} {'t_int Fo':>8} | "
-           f"{'tau2 Fm ns, pauses':<30} {'t_int Fm':<24} | {'phi2_tau, pauses':<28} {'mean +- sd':>14}"]
+    """One line per level: AMBIT Fo, Fm, phi2; t_amp and t_int of the reference line; t_amp and t_int
+    of every pause; phi2 from the lifetimes per pause and their mean +- SD."""
+    out = [f"{'pre':>4} {'wait s':>6} {'Fo_A':>7} {'Fm_A':>7} {'phi2_A':>13} | {'t_amp Fo ns':>13} {'t_int Fo':>8} | "
+           f"{'t_amp Fm ns, pauses':<30} {'t_int Fm':<24} | {'phi2_tau, pauses':<28} {'mean +- sd':>14}"]
     for r in ser["rows"]:
         pre = f"{r['actinic']:>4}" if np.isfinite(r["actinic"]) else "   -"
         out.append(f"{pre} {r['wait_s']:>6.0f} {r['fo_ambit']:7.4f} {r['fm_ambit']:7.4f} "
-                   f"{r['phi2_ambit']:6.3f}+-{r['phi2_ambit_err']:.3f} | {r['tau2_fo']:6.3f}+-{r['tau2_fo_err']:.3f} "
-                   f"{r['t_int_fo']:8.3f} | {' '.join(f'{t:.3f}' for t in r['tau2_fm']):<30} "
+                   f"{r['phi2_ambit']:6.3f}+-{r['phi2_ambit_err']:.3f} | {r['t_amp_fo']:6.3f}+-{r['t_amp_fo_err']:.3f} "
+                   f"{r['t_int_fo']:8.3f} | {' '.join(f'{t:.3f}' for t in r['t_amp_fm']):<30} "
                    f"{' '.join(f'{t:.3f}' for t in r['t_int_fm']):<24} | "
                    f"{' '.join(f'{p:.3f}' for p in r['phi2_tau']):<28} {r['phi2_tau_mean']:6.3f} +- {r['phi2_tau_sd']:.3f}"
                    + (f"   {len(r['warnings'])} warning(s)" if r["warnings"] else ""))
     out.append(f"(Fo_A: mean s/r of the last {ser['fo_points']} dark points before the train; Fm_A: mean of the last "
                f"{ser['fm_points']} lit points; phi2_A = (Fm - Fo) / Fm, error from the scatter of the points. "
-               "tau2: slow component of the reconvolution fit, Fo from the reference line, Fm per pause; "
-               "phi2_tau = (tau2,Fm - tau2,Fo) / tau2,Fm)")
+               "t_amp: amplitude-weighted lifetime of the reconvolution fit, Fo from the reference line, Fm per "
+               "pause; phi2_tau = (t_amp,Fm - t_amp,Fo) / t_amp,Fm. t_int: photon-weighted mean lifetime, for "
+               "comparison)")
     return "\n".join(out)
 
 
 def plot_light_series(ser: dict, save_to=None, show: bool = True):
     """Three panels over the pre-illumination level: phi2 (AMBIT, and the mean of the 4 lifetime
-    values); tau2 of Fo (left axis) and of every Fm pause (right axis, the mean joined); and
+    values); t_amp of Fo (left axis) and of every Fm pause (right axis, the mean joined); and
     phi2 from the lifetimes against phi2 from the AMBIT, the mean of the 4 pauses as the marker
     (bar: their SD) with the 4 values as faint points. Saved as series_phi2.png in the session
     folder unless ``save_to`` says otherwise (False: not saved)."""
@@ -1170,10 +1190,10 @@ def plot_light_series(ser: dict, save_to=None, show: bool = True):
     phi_t, phi_t_err = pad("phi2_tau"), pad("phi2_tau_err")
     phi_t_mean = np.array([r["phi2_tau_mean"] for r in rows])
     phi_t_sd = np.array([r["phi2_tau_sd"] for r in rows])
-    t2o, t2o_err = np.array([r["tau2_fo"] for r in rows]), np.array([r["tau2_fo_err"] for r in rows])
-    t2m, t2m_err = pad("tau2_fm"), pad("tau2_fm_err")
-    t2m_mean = np.array([r["tau2_fm_mean"] for r in rows])
-    t2m_sd = np.array([r["tau2_fm_sd"] for r in rows])
+    t2o, t2o_err = np.array([r["t_amp_fo"] for r in rows]), np.array([r["t_amp_fo_err"] for r in rows])
+    t2m, t2m_err = pad("t_amp_fm"), pad("t_amp_fm_err")
+    t2m_mean = np.array([r["t_amp_fm_mean"] for r in rows])
+    t2m_sd = np.array([r["t_amp_fm_sd"] for r in rows])
     dx = 0.012 * (np.ptp(x) if np.ptp(x) > 0 else 1.0)
 
     fig, axs = plt.subplots(1, 3, figsize=(16, 5))
@@ -1190,15 +1210,15 @@ def plot_light_series(ser: dict, save_to=None, show: bool = True):
 
     ax = axs[1]
     ax2 = ax.twinx()
-    h1 = ax.errorbar(x, t2o, yerr=t2o_err, fmt="o-", color="tab:blue", capsize=2, label="tau2 Fo (reference line)")
+    h1 = ax.errorbar(x, t2o, yerr=t2o_err, fmt="o-", color="tab:blue", capsize=2, label="t_amp Fo (reference line)")
     for j in range(n_p):
         ax2.errorbar(x + (j - (n_p - 1) / 2) * dx, t2m[:, j], yerr=t2m_err[:, j], fmt=".", color="tab:red",
                      alpha=0.45, ms=7, capsize=0)
     h2 = ax2.errorbar(x, t2m_mean, yerr=t2m_sd, fmt="s-", color="tab:red", mfc="none", capsize=2,
-                      label="tau2 Fm (mean of the pauses; dots: each pause)")
+                      label="t_amp Fm (mean of the pauses; dots: each pause)")
     ax.set_xlabel(xlabel)
-    ax.set_ylabel("tau2 Fo [ns]", color="tab:blue")
-    ax2.set_ylabel("tau2 Fm [ns]", color="tab:red")
+    ax.set_ylabel("t_amp Fo [ns]", color="tab:blue")
+    ax2.set_ylabel("t_amp Fm [ns]", color="tab:red")
     ax.tick_params(axis="y", colors="tab:blue")
     ax2.tick_params(axis="y", colors="tab:red")
     ax.grid(alpha=0.3)
@@ -1218,7 +1238,7 @@ def plot_light_series(ser: dict, save_to=None, show: bool = True):
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 0.5)
     ax.set_xlabel("phi2 AMBIT")
-    ax.set_ylabel("phi2 from the lifetimes, (tau2,Fm - tau2,Fo) / tau2,Fm")
+    ax.set_ylabel("phi2 from the lifetimes, (t_amp,Fm - t_amp,Fo) / t_amp,Fm")
     ax.grid(alpha=0.3)
     ax.legend(fontsize=8, loc="upper left")
     ax.set_title("phi2: lifetime against AMBIT (labels: pre-illumination)", fontsize=10)

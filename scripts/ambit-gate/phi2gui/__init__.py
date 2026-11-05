@@ -1,4 +1,4 @@
-"""phi2 GUI: the AMBIT + Felix pauses measurement of notebook 4 with its results, and the upload
+﻿"""phi2 GUI: the AMBIT + Felix pauses measurement of notebook 4 with its results, and the upload
 of a run to an openJII experiment.
 
 Run it from anywhere::
@@ -18,4 +18,4 @@ HERE = Path(__file__).resolve().parent
 if str(HERE.parent) not in sys.path:
     sys.path.insert(0, str(HERE.parent))
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"

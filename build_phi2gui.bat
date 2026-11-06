@@ -30,10 +30,8 @@ set /p BASEPY=<"%TEMP%\phi2gui_base.txt"
 set /p VER=<"%TEMP%\phi2gui_version.txt"
 if "%VER%"=="" goto :fail
 
-if not exist docs\Felix_WinUSB_driver.exe (
-    echo Fetching TEDIEL's Felix WinUSB driver installer into docs\ ...
-    curl -L -o docs\Felix_WinUSB_driver.exe https://tediel.com/wp-content/Resources/Felix/Felix_WinUSB_driver.exe || goto :fail
-)
+rem TEDIEL's Felix driver installer, checked against the SHA-256 pinned in the script.
+"%VPY%" packaging\fetch_driver.py || goto :fail
 
 rem A PATH of Windows and this Python only. PyInstaller resolves the DLLs a binary imports through
 rem PATH, and from an Anaconda prompt it bundled conda's ICU over the one Windows provides for Qt

@@ -9,6 +9,7 @@ The bundle includes TEDIEL's pylibtdc (Felix TDC bindings, authored by Politecni
 the same wheel TEDIEL offers as a free download at https://tediel.com/resources.
 """
 import importlib.metadata
+import importlib.util
 import re
 import site
 import sys
@@ -30,12 +31,17 @@ except importlib.metadata.PackageNotFoundError:
     print("NOTE: pylibtdc is not installed: this build cannot drive the Felix")
     pylibtdc_dlls = []
 
-# TEDIEL's Felix WinUSB driver installer: the GUI offers to run it when the Felix has no driver yet
-# (build_phi2gui.bat downloads it into docs/ when missing).
-_drv = ROOT / "docs" / "Felix_WinUSB_driver.exe"
+# TEDIEL's Felix WinUSB driver installer: the GUI runs it with administrator rights when the Felix has
+# no driver yet. packaging/fetch_driver.py downloads it; only the pinned SHA-256 gets bundled.
+_fetch = importlib.util.spec_from_file_location("fetch_driver", ROOT / "packaging" / "fetch_driver.py")
+_fd = importlib.util.module_from_spec(_fetch)
+_fetch.loader.exec_module(_fd)
+_drv = _fd.DRIVER
+if _drv.is_file() and _fd.sha256(_drv) != _fd.SHA256:
+    raise SystemExit(f"{_drv} does not match the pinned SHA-256: run packaging/fetch_driver.py")
 if WINDOWS and not _drv.is_file():
     print(f"WARNING: {_drv} missing: this build cannot install the Felix driver")
-datas = [(str(_drv), "driver")] if _drv.is_file() else []
+datas = [(str(_drv), "driver")] if WINDOWS and _drv.is_file() else []
 # the IRF library (blank_dose.DEFAULT_IRF_NAME is the GUI's default; users add their own via the GUI)
 datas += [(str(p), "irf-library") for p in sorted((ROOT / "irf-library").glob("*.csv"))]
 

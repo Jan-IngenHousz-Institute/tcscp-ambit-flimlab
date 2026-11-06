@@ -27,8 +27,12 @@ Linux x64, any distribution with glibc 2.35 or newer
 
 macOS, Apple silicon
   Start:     move phi2gui.app to Applications and double-click it. The app is not notarized, so
-             the first start needs a right-click on it, then Open. If macOS says the app is
-             damaged, run this once in Terminal:  xattr -dr com.apple.quarantine /Applications/phi2gui.app
+             macOS blocks the first start. Click Done, open System Settings > Privacy & Security,
+             scroll to Security, click "Open Anyway" next to phi2gui and confirm with your password.
+             From then on it starts with a double-click.
+  Damaged:   if macOS instead says the app is damaged and offers to move it to the Bin, run this
+             once in Terminal, then start it as above:
+               xattr -dr com.apple.quarantine /Applications/phi2gui.app
   Felix:     TEDIEL ships no macOS library, so a Mac cannot drive the Felix. It opens saved runs,
              shows their results and uploads them to openJII.
   Output:    ~/Documents/phi2gui/runs/

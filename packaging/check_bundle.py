@@ -25,11 +25,17 @@ LINUX_SYSTEM = re.compile(
     r"|libxcb\.so\..*|libwayland-(client|cursor|egl|server)\.so\..*)$"
 )
 MAC_SYSTEM = ("/System/Library/", "/usr/lib/")
-MAC_LOCAL = ("@rpath/", "@loader_path/", "@executable_path/")
+MACHO_MAGIC = (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xce\xfa\xed\xfe")
+# Load commands whose library must be there. LC_LOAD_WEAK_DYLIB is optional by definition.
+MAC_REQUIRED = {"LC_LOAD_DYLIB", "LC_REEXPORT_DYLIB", "LC_LOAD_UPWARD_DYLIB"}
 
 
 def _run(*cmd: str) -> str:
-    return subprocess.run(cmd, capture_output=True, text=True, check=False).stdout
+    """A tool's output. A tool that fails fails the check, so it never passes by seeing nothing."""
+    done = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if done.returncode != 0:
+        raise SystemExit(f"{' '.join(cmd)} failed ({done.returncode}): {done.stderr.strip()[:300]}")
+    return done.stdout
 
 
 def linux(root: Path) -> list[str]:
@@ -44,15 +50,49 @@ def linux(root: Path) -> list[str]:
     return [f"{so}  (needed by {', '.join(sorted(users)[:3])})" for so, users in sorted(missing.items())]
 
 
+def load_commands(otool_l: str) -> tuple[list[str], list[str]]:
+    """The required libraries and the LC_RPATH entries in `otool -l` output."""
+    libs: list[str] = []
+    rpaths: list[str] = []
+    cmd = ""
+    for line in otool_l.splitlines():
+        words = line.split()
+        if len(words) >= 2 and words[0] == "cmd":
+            cmd = words[1]
+        elif len(words) >= 2 and words[0] == "name" and cmd in MAC_REQUIRED:
+            libs.append(line.split("name", 1)[1].rsplit("(offset", 1)[0].strip())
+        elif len(words) >= 2 and words[0] == "path" and cmd == "LC_RPATH":
+            rpaths.append(line.split("path", 1)[1].rsplit("(offset", 1)[0].strip())
+    return libs, rpaths
+
+
+def _expand(path: str, loader: Path, executable_dir: Path) -> Path:
+    if path.startswith("@loader_path"):
+        return loader.parent / path[len("@loader_path") :].lstrip("/")
+    if path.startswith("@executable_path"):
+        return executable_dir / path[len("@executable_path") :].lstrip("/")
+    return Path(path)
+
+
 def macos(root: Path) -> list[str]:
+    """Every required library resolves to a file inside the bundle, or to the operating system.
+    @rpath, @loader_path and @executable_path are resolved the way dyld does, through the binary's
+    own LC_RPATH entries, so a reference to a library nobody bundled fails here."""
+    inside = root.resolve()
+    executable_dir = root / "Contents" / "MacOS" if root.suffix == ".app" else root
     missing: dict[str, set[str]] = {}
     for f in (p for p in root.rglob("*") if p.is_file() and not p.is_symlink()):
-        head = f.read_bytes()[:4]
-        if head not in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xce\xfa\xed\xfe"):
+        if f.read_bytes()[:4] not in MACHO_MAGIC:
             continue
-        for line in _run("otool", "-L", str(f)).splitlines()[1:]:
-            lib = line.strip().split(" (")[0]
-            if lib and not lib.startswith(MAC_SYSTEM + MAC_LOCAL):
+        libs, rpaths = load_commands(_run("otool", "-l", str(f)))
+        for lib in libs:
+            if lib.startswith(MAC_SYSTEM):
+                continue
+            if lib.startswith("@rpath/"):
+                found = [_expand(r, f, executable_dir) / lib[len("@rpath/") :] for r in rpaths]
+            else:
+                found = [_expand(lib, f, executable_dir)]
+            if not any(c.exists() and (c.resolve() == inside or inside in c.resolve().parents) for c in found):
                 missing.setdefault(lib, set()).add(str(f.relative_to(root)))
     return [f"{lib}  (needed by {', '.join(sorted(users)[:3])})" for lib, users in sorted(missing.items())]
 

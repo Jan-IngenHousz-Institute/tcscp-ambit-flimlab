@@ -53,6 +53,15 @@ The version comes from the PR titles, so nobody edits it. `__version__` in
 build writes it into its executable with `packaging/stamp_version.py`, so the three apps and the
 release agree. A pull request builds as the last tag plus `+pr.<number>`, such as `0.1.7+pr.8`.
 
+## When a release fails halfway
+
+semantic-release pushes the tag `v<version>` before it creates the GitHub release and uploads the
+zips. If the run fails in between, the tag exists and the release is missing, still a draft, or
+short of assets. Re-run all jobs of that workflow run. The release-version job then finds the tag
+at the merged commit with an unfinished release, builds that same version again, and the release
+job uploads the zips and publishes it. The last step passes only when the release is published with
+exactly the three zips and `SHA256SUMS`.
+
 ## Self-contained builds
 
 A user downloads a zip, extracts it and starts the app without installing anything. Each bundle
@@ -95,9 +104,24 @@ can try a build before merging. On Linux or macOS, run
 `uv run --group build python -m PyInstaller packaging/phi2gui.spec` and then
 `uv run python packaging/check_bundle.py dist/phi2gui`, or `dist/phi2gui.app` on macOS.
 
-Nothing is code-signed. Windows SmartScreen may warn on first start, and macOS needs a right-click
-and Open, because the app is not notarized. `packaging/README-dist.txt` ships as `README.txt` in
+Nothing is code-signed. Windows SmartScreen may warn on first start. macOS blocks the first start
+because the app is not notarized, and since macOS 15 the only way past that is System Settings >
+Privacy & Security > Open Anyway. `packaging/README-dist.txt` ships as `README.txt` in
 every zip and tells users what to do.
+
+## Supply chain
+
+Everything the release job runs or ships is pinned, so a change upstream cannot reach a release
+without a pull request here:
+
+- `uv.lock` pins every Python package by hash, the pylibtdc wheels included.
+- `packaging/fetch_driver.py` takes TEDIEL's Felix driver installer only at its pinned SHA-256,
+  whether it downloads it or finds it in `docs/`. The phi2 GUI runs that installer with
+  administrator rights, so the spec refuses to bundle any other file. When TEDIEL publishes a new
+  installer, check it and change `SHA256` in a pull request.
+- semantic-release and its preset come from `packaging/release-tools/package-lock.json` through
+  `npm ci`. Update them with `npm install --save-exact` in that folder and commit the lockfile.
+- Every action in `.github/workflows/` is pinned to a commit SHA, with the version in a comment.
 
 ## A new pylibtdc
 

@@ -271,7 +271,12 @@ jobs:
   release:
     name: Publish release
     needs: [main-version, build]
-    if: github.event_name == 'push' && needs.main-version.outputs.mode != 'none'
+    # Explicit results, not the implicit success(): pr-version is skipped on main, and GitHub skips
+    # every job downstream of a skipped one unless its condition says otherwise.
+    if: >-
+      !cancelled() && github.event_name == 'push'
+      && needs.main-version.result == 'success' && needs.main-version.outputs.mode != 'none'
+      && needs.build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

@@ -5,8 +5,18 @@ from __future__ import annotations
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox,
-                               QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..settings import HistSettings
 
@@ -43,8 +53,7 @@ class HistogramView(QWidget):
         self.c_data = self.p_main.plot(pen=pg.mkPen("#4a90d9", width=1), name="data")
         self.c_irf = self.p_main.plot(pen=pg.mkPen("#2e9e4f", width=1, style=Qt.DashLine), name="IRF (scaled)")
         self.c_fit = self.p_main.plot(pen=pg.mkPen("#d9534f", width=2), name="fit", connect="finite")
-        self.c_res = self.p_res.plot(pen=None, symbol="o", symbolSize=3,
-                                     symbolBrush="#555", symbolPen=None)
+        self.c_res = self.p_res.plot(pen=None, symbol="o", symbolSize=3, symbolBrush="#555", symbolPen=None)
         self.p_res.addLine(y=0, pen=pg.mkPen("#999"))
         self.set_log(True)
 
@@ -79,8 +88,7 @@ class HistogramView(QWidget):
         scale = peak_d / peak_i if peak_i > 0 else 1.0
         self.c_irf.setData(self._t, self._y(self._irf * scale))
 
-    def set_fit(self, model: np.ndarray | None, resid_t_ns: np.ndarray | None,
-                resid: np.ndarray | None) -> None:
+    def set_fit(self, model: np.ndarray | None, resid_t_ns: np.ndarray | None, resid: np.ndarray | None) -> None:
         """model is on the data grid; residuals come with their own (possibly coarser) axis."""
         self._model, self._resid, self._mask = model, resid, resid_t_ns
         self._draw_fit()
@@ -184,9 +192,17 @@ class HistogramConfigPanel(QGroupBox):
         self.enable_btn.toggled.connect(self._on_enable)
         self.reset_btn.clicked.connect(self.reset_requested)
         self.log_chk.toggled.connect(self.log_toggled)
-        self._config_widgets = [self.ref_combo, self.meas_combo, self.left_spin, self.right_spin,
-                                self.bin_spin, self.multi_chk, self.acc_chk, self.refresh_spin,
-                                self.apply_btn]
+        self._config_widgets = [
+            self.ref_combo,
+            self.meas_combo,
+            self.left_spin,
+            self.right_spin,
+            self.bin_spin,
+            self.multi_chk,
+            self.acc_chk,
+            self.refresh_spin,
+            self.apply_btn,
+        ]
 
     def _on_enable(self, on: bool) -> None:
         self.enable_btn.setText("Disable" if on else "Enable")
@@ -230,8 +246,7 @@ class HistogramConfigPanel(QGroupBox):
         self.refresh_spin.setValue(h.refresh_s)
 
     def show_bounds(self, left_ns: float, right_ns: float, bin_ps: float, n: int) -> None:
-        self.bounds_lbl.setText(f"device bounds: {left_ns:.3f} to {right_ns:.3f} ns, "
-                                f"bin {bin_ps:.1f} ps, {n} bins")
+        self.bounds_lbl.setText(f"device bounds: {left_ns:.3f} to {right_ns:.3f} ns, bin {bin_ps:.1f} ps, {n} bins")
 
     def show_status(self, text: str, warning: bool = False) -> None:
         self.status_lbl.setStyleSheet("color: #b00000; font-weight: bold;" if warning else "")

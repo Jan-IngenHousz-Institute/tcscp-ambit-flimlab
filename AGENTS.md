@@ -25,6 +25,7 @@ uv manages Python 3.13 and every package, pinned in `uv.lock`. From the reposito
 ```bash
 uv sync                       # every package into .venv, TEDIEL's pylibtdc included
 uv run nbstripout --install   # once per clone, so notebook outputs stay out of commits
+uv run ruff check --fix . && uv run ruff format .
 uv run pytest -q
 ```
 
@@ -34,7 +35,8 @@ group installs nothing.
 
 These checks work without instruments, on Linux and macOS too:
 
-- `uv run pytest -q` covers fitting, the upload row and access rules, and the release version choice.
+- `uv run ruff check .` and `uv run ruff format --check .` are the `lint` check CI runs.
+- `uv run pytest -q` covers fitting, the upload row and access rules, and the version stamp.
 - From `scripts/ambit-gate`, `QT_QPA_PLATFORM=offscreen uv run python -m phi2gui --smoke-test
   /tmp/phi2gui-ok.txt` writes `ok <version>` once Qt, pylibtdc and the main window load.
 - `QT_QPA_PLATFORM=offscreen uv run python -m flimgui --sim` runs flimgui on a simulated Felix. It
@@ -57,11 +59,16 @@ Hand those to the person as steps to try.
   constraint. Match that, and keep units in names, such as `t_s`, `bin_ps`, `window_s`, `laser_hz`.
 - **Notebooks** go through nbstripout, set in `.gitattributes`, so their outputs never reach a commit.
 - **Dependencies** change with `uv add` and `uv remove`. Commit `pyproject.toml` and `uv.lock` together.
-- **Commits** use conventional subjects, such as `feat(upload): ...`, `fix(gui): ...`, `ci: ...`,
-  `build: ...` and `docs: ...`.
-- **Pull requests** go to `main` with green CI. A merge that touches the GUI publishes a release for
-  all three platforms by itself, so `main` must always be releasable. Leave `__version__` alone
-  unless the change starts a new minor or major version, as `docs/releasing.md` explains.
+- **PR titles are Conventional Commits**, such as `feat(upload): ...`, `fix(gui): ...`, `ci: ...` or
+  `docs: ...`. GitHub squash-merges every PR with its title as the commit subject, and
+  semantic-release turns those subjects into the next version: `feat` releases a minor, `fix`,
+  `perf` and `revert` a patch, `!` a major, and the other types nothing. Pick the type for what the
+  change does for the people using the app, because it decides whether they get a release.
+- **Pull requests** are the only way into `main`, and a ruleset lets nobody bypass that. The
+  required checks are `PR title`, `lint`, `test` and the three `Build (...)` jobs, as
+  `docs/releasing.md` lists. Nobody edits the version, and `__version__` stays `0.0.0` in git.
+- **Ruff** lints and formats everything, with a line length of 120 and the rules in
+  `pyproject.toml`.
 - **Self-contained builds.** A standalone zip carries everything except the operating system's own
   libraries. `packaging/check_bundle.py` fails a Linux or macOS build that misses one, and the
   smoke test starts every build on a fresh runner.

@@ -4,6 +4,7 @@ Everything that waits on hardware or the network runs in a ``Task`` thread and r
 signals; the window stays responsive and the buttons that would collide are disabled meanwhile.
 The analysis modules draw with pyplot on the Agg backend; their figures are embedded by hand.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,35 +15,37 @@ import traceback
 from pathlib import Path
 
 import matplotlib
-matplotlib.use("Agg")                                   # before the analysis modules import pyplot
-import matplotlib.pyplot as plt                         # noqa: E402
-import numpy as np                                      # noqa: E402
-import serial.tools.list_ports                          # noqa: E402
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT   # noqa: E402
-from PySide6 import QtCore, QtGui, QtWidgets            # noqa: E402
 
-import ambit_gate as ag                                 # noqa: E402
-import ambit_pause as ap                                # noqa: E402
-import blank_dose as bd                                 # noqa: E402
+matplotlib.use("Agg")  # before the analysis modules import pyplot
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import serial.tools.list_ports  # noqa: E402
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
-from . import driver as drv                             # noqa: E402
-from . import openjii as oj                             # noqa: E402
-from . import upload as up                              # noqa: E402
+import ambit_gate as ag  # noqa: E402
+import ambit_pause as ap  # noqa: E402
+import blank_dose as bd  # noqa: E402
+
+from . import driver as drv  # noqa: E402
+from . import openjii as oj  # noqa: E402
+from . import upload as up  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-if getattr(sys, "frozen", False) and sys.platform == "darwin":   # the .app bundle stays read-only
+if getattr(sys, "frozen", False) and sys.platform == "darwin":  # the .app bundle stays read-only
     RUNS_DIR = Path.home() / "Documents" / "phi2gui" / "runs"
-elif getattr(sys, "frozen", False):                     # PyInstaller build: runs/ next to the executable
+elif getattr(sys, "frozen", False):  # PyInstaller build: runs/ next to the executable
     RUNS_DIR = Path(sys.executable).resolve().parent / "runs"
 else:
     RUNS_DIR = HERE.parent / "runs"
-DEFAULT_TABLE = "ambit_tcspc_runs"                      # one row per run (upload.ROW_FORMAT 2)
+DEFAULT_TABLE = "ambit_tcspc_runs"  # one row per run (upload.ROW_FORMAT 2)
 HIGHLIGHT = QtGui.QColor("#fff0a8")
 RED = "#b00000"
 
 
 class Task(QtCore.QThread):
     """Runs ``fn(log)`` in a thread; ``log`` posts text to the window, ``done`` carries the result."""
+
     message = QtCore.Signal(str)
     done = QtCore.Signal(object)
     failed = QtCore.Signal(str)
@@ -54,7 +57,7 @@ class Task(QtCore.QThread):
     def run(self) -> None:
         try:
             self.done.emit(self._fn(self.message.emit))
-        except Exception as exc:                        # reported to the user, never lost
+        except Exception as exc:  # reported to the user, never lost
             self.failed.emit(f"{type(exc).__name__}: {exc}\n{traceback.format_exc(limit=4)}")
 
 
@@ -91,7 +94,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.client: oj.OpenJIIClient | None = None
         self.experiments: list[oj.Experiment] = []
         self.irf: dict | None = None
-        self.irf_dir = oj.config_dir() / "irf-library"        # the user's own IRF files (Add IRF file...)
+        self.irf_dir = oj.config_dir() / "irf-library"  # the user's own IRF files (Add IRF file...)
         self.session = RUNS_DIR / (time.strftime("%Y%m%d_%H%M%S") + "_gui")
         self.run_dir: Path | None = None
         self.res: dict | None = None
@@ -101,7 +104,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._load_settings()
         self._rescan_ports()
         self._refresh_irfs(select=str(self.settings.get("irf", "")))
-        QtCore.QTimer.singleShot(800, self._check_driver_at_start)     # once the window is up
+        QtCore.QTimer.singleShot(800, self._check_driver_at_start)  # once the window is up
 
     # ------------------------------------------------------------------ ui
     def _build_ui(self) -> None:
@@ -136,8 +139,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_rates = QtWidgets.QLabel("-")
         f.addRow(self.btn_rates, self.lbl_rates)
         self.irf_combo = QtWidgets.QComboBox()
-        self.irf_combo.setToolTip("Instrument response for the reconvolution fits: the shipped default, "
-                                  "or a TDC-Software histogram export you added")
+        self.irf_combo.setToolTip(
+            "Instrument response for the reconvolution fits: the shipped default, "
+            "or a TDC-Software histogram export you added"
+        )
         self.irf_combo.currentIndexChanged.connect(self._irf_changed)
         self.btn_irf = QtWidgets.QPushButton("Add IRF file...")
         self.btn_irf.clicked.connect(self._add_irf)
@@ -185,7 +190,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.felix_combo.setToolTip(
             "Full resolution keeps every raw Felix bin in the run's row (SQL, notebooks, exports).\n"
             "openJII's Data page cannot list a table holding such rows yet: use a table of its own,\n"
-            "e.g. ambit_tcspc_runs_full.")
+            "e.g. ambit_tcspc_runs_full."
+        )
         f.addRow("Felix histograms", self.felix_combo)
         self.btn_upload = QtWidgets.QPushButton("Upload this run")
         self.btn_upload.clicked.connect(self._upload_current)
@@ -204,8 +210,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spin_block = _spin(0.02, 5.0, 0.2, 2, 0.05, " s")
         f.addRow("Lit block", self.spin_block)
         self.pauses_edit = QtWidgets.QLineEdit("2,2,2,2")
-        self.pauses_edit.setToolTip("AMBIT points per pause, one entry per pause (1 point = ~10 ms dark at 100 Hz; "
-                                    "the Felix window must be at most half of a pause)")
+        self.pauses_edit.setToolTip(
+            "AMBIT points per pause, one entry per pause (1 point = ~10 ms dark at 100 Hz; "
+            "the Felix window must be at most half of a pause)"
+        )
         f.addRow("Pauses (points each)", self.pauses_edit)
         self.spin_freq = _spin(1, 2000, 100, suffix=" Hz")
         f.addRow("AMBIT sampling", self.spin_freq)
@@ -252,7 +260,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabs = QtWidgets.QTabWidget()
         res_w = QtWidgets.QWidget()
         v = QtWidgets.QVBoxLayout(res_w)
-        self.lbl_title = QtWidgets.QLabel("no run yet: connect the instruments and run a measurement, or open a saved run")
+        self.lbl_title = QtWidgets.QLabel(
+            "no run yet: connect the instruments and run a measurement, or open a saved run"
+        )
         self.lbl_title.setTextFormat(QtCore.Qt.TextFormat.RichText)
         self.lbl_title.setWordWrap(True)
         v.addWidget(self.lbl_title)
@@ -335,26 +345,30 @@ class MainWindow(QtWidgets.QMainWindow):
             self.irf = None
             self._log(f"ERROR: could not read the IRF {path}: {exc}")
         if self.irf is None:
-            self.lbl_irf.setText("NO IRF: the decays will not be fitted, no lifetime phi2. "
-                                 "Add one with 'Add IRF file...' (a TDC-Software histogram export).")
+            self.lbl_irf.setText(
+                "NO IRF: the decays will not be fitted, no lifetime phi2. "
+                "Add one with 'Add IRF file...' (a TDC-Software histogram export)."
+            )
             self.lbl_irf.setStyleSheet(f"color: {RED}; font-weight: bold")
             self._log("WARNING: no IRF: the decays will not be fitted, no lifetime phi2")
             return
-        self.lbl_irf.setText(f"{self.irf['name']}: {self.irf['bin_s'] * 1e12:.2f} ps bins, "
-                             f"{self.irf['counts'].sum():,.0f} counts")
+        self.lbl_irf.setText(
+            f"{self.irf['name']}: {self.irf['bin_s'] * 1e12:.2f} ps bins, {self.irf['counts'].sum():,.0f} counts"
+        )
         self.lbl_irf.setStyleSheet("color: gray")
         self.settings.set("irf", self.irf["name"])
         self._log(f"IRF: {self.irf['name']}")
 
     def _add_irf(self) -> None:
         """Copy a TDC-Software histogram export into the user's IRF folder and select it."""
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "IRF file (TDC-Software histogram export)", "",
-                                                        "CSV files (*.csv);;All files (*)")
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "IRF file (TDC-Software histogram export)", "", "CSV files (*.csv);;All files (*)"
+        )
         if not path:
             return
         src = Path(path)
         try:
-            bd.load_irf(src)                                 # readable as an IRF?
+            bd.load_irf(src)  # readable as an IRF?
             self.irf_dir.mkdir(parents=True, exist_ok=True)
             dst = self.irf_dir / src.name
             if src.resolve() != dst.resolve():
@@ -389,8 +403,11 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         port = self.port_combo.currentData()
         self.btn_ambit.setEnabled(False)
-        self._start_task(lambda log: ag.find_ambit(port, log=log), self._ambit_connected,
-                         lambda e: (self._log("ERROR: " + e), self.btn_ambit.setEnabled(True)))
+        self._start_task(
+            lambda log: ag.find_ambit(port, log=log),
+            self._ambit_connected,
+            lambda e: (self._log("ERROR: " + e), self.btn_ambit.setEnabled(True)),
+        )
 
     def _ambit_connected(self, link) -> None:
         self.ambit = link
@@ -447,11 +464,14 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         yes = QtWidgets.QMessageBox.StandardButton.Yes
         answer = QtWidgets.QMessageBox.question(
-            self, "Felix driver",
+            self,
+            "Felix driver",
             "The Felix is plugged in, but Windows has no driver for it yet.\n\n"
             "Install TEDIEL's Felix WinUSB driver now? Windows asks for administrator permission, "
             "then a short wizard runs (Next, Finish). The Felix is connected afterwards.",
-            yes | QtWidgets.QMessageBox.StandardButton.No, yes)
+            yes | QtWidgets.QMessageBox.StandardButton.No,
+            yes,
+        )
         if answer != yes:
             self._log("driver not installed; 'Connect Felix' asks again")
             return
@@ -460,7 +480,7 @@ class MainWindow(QtWidgets.QMainWindow):
             log(f"running {path.name} (administrator permission needed) ...")
             code = drv.run_installer(path)
             state = ag.felix_usb_state()
-            for _ in range(20):                                  # Windows binds the driver after dpinst exits
+            for _ in range(20):  # Windows binds the driver after dpinst exits
                 if state.get("present") and not state.get("problem"):
                     break
                 time.sleep(0.5)
@@ -468,8 +488,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return code, state
 
         self.btn_felix.setEnabled(False)
-        self._start_task(fn, self._driver_installed,
-                         lambda e: (self._log("ERROR: " + e), self.btn_felix.setEnabled(True)))
+        self._start_task(
+            fn, self._driver_installed, lambda e: (self._log("ERROR: " + e), self.btn_felix.setEnabled(True))
+        )
 
     def _driver_installed(self, result) -> None:
         code, state = result
@@ -479,8 +500,10 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.felix is None:
                 self._toggle_felix()
         else:
-            self._log(f"the installer finished (exit code {code}) but the Felix still reports problem "
-                      f"{state.get('problem')}: unplug and replug it, then 'Connect Felix'")
+            self._log(
+                f"the installer finished (exit code {code}) but the Felix still reports problem "
+                f"{state.get('problem')}: unplug and replug it, then 'Connect Felix'"
+            )
 
     def _show_rates(self, rates: dict) -> None:
         sync, spad = rates.get(ag.SYNC_CH, 0.0), rates.get(ag.SPAD_CH, 0.0)
@@ -605,9 +628,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def _upload_failed(self, text: str) -> None:
         self.btn_upload.setEnabled(True)
         if "No upload table with id" in text:
-            text = ("the platform does not list the new table yet (it appears a few minutes after its "
-                    "first upload finished): try again in a minute")
-        elif "experiment management access" in text:         # 403 on targetKind=new, past the pre-check
+            text = (
+                "the platform does not list the new table yet (it appears a few minutes after its "
+                "first upload finished): try again in a minute"
+            )
+        elif "experiment management access" in text:  # 403 on targetKind=new, past the pre-check
             text = up.NO_TABLE_TEXT.format(table=self.table_edit.text().strip(), exp="this experiment")
         self.lbl_upload.setText("failed: " + text.splitlines()[0])
         self._log("ERROR upload: " + text)
@@ -621,8 +646,13 @@ class MainWindow(QtWidgets.QMainWindow):
         return vals
 
     def _protocol(self) -> list[dict]:
-        return ap.train_protocol(self.spin_level.value(), self.spin_dark.value(), self.spin_block.value(),
-                                 self._pauses(), self.spin_freq.value())
+        return ap.train_protocol(
+            self.spin_level.value(),
+            self.spin_dark.value(),
+            self.spin_block.value(),
+            self._pauses(),
+            self.spin_freq.value(),
+        )
 
     def _update_protocol_label(self, *_args) -> None:
         try:
@@ -630,9 +660,11 @@ class MainWindow(QtWidgets.QMainWindow):
             pred = ap.predict(prot)
             n_pause = sum(1 for r in pred if r["role"] == "pause")
             dark = [r["dark1"] - r["dark0"] for r in pred if r["role"] == "pause"]
-            self.lbl_protocol.setText(f"{len(prot)} AMBIT lines, {sum(s['pulses'] for s in prot)} points, "
-                                      f"{pred[-1]['t1']:.2f} s; {n_pause} pauses of "
-                                      f"{', '.join(f'{d * 1e3:.0f}' for d in dark)} ms dark (predicted)")
+            self.lbl_protocol.setText(
+                f"{len(prot)} AMBIT lines, {sum(s['pulses'] for s in prot)} points, "
+                f"{pred[-1]['t1']:.2f} s; {n_pause} pauses of "
+                f"{', '.join(f'{d * 1e3:.0f}' for d in dark)} ms dark (predicted)"
+            )
             self.lbl_protocol.setStyleSheet("color: gray")
         except ValueError as exc:
             self.lbl_protocol.setText(str(exc))
@@ -648,13 +680,17 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, "Protocol", str(exc))
             return
         warn = ap.window_check(protocol, self.spin_window.value() / 1e3)
-        if warn:                                             # the pauses would yield no decay
+        if warn:  # the pauses would yield no decay
             QtWidgets.QMessageBox.warning(self, "Felix window vs pauses", warn)
             return
         label = self.label_edit.text().strip() or "run"
         out = self.session / f"pauses_{label}_{time.strftime('%H%M%S')}"
-        params = dict(window_s=self.spin_window.value() / 1e3, note=self.note_edit.text().strip(),
-                      threshold_v=self.spin_threshold.value(), laser_hz=ag.LASER_REP_RATE_HZ)
+        params = dict(
+            window_s=self.spin_window.value() / 1e3,
+            note=self.note_edit.text().strip(),
+            threshold_v=self.spin_threshold.value(),
+            laser_hz=ag.LASER_REP_RATE_HZ,
+        )
         fo, fm = self.spin_fo.value(), self.spin_fm.value()
         ambit, felix, irf = self.ambit, self.felix, self.irf
         self._save_settings()
@@ -665,7 +701,7 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 res = ap.analyse_pauses(d, irf=irf)
                 return d, res, ap.run_summary(res, fo, fm)
-            except Exception as exc:                         # the raw data are shown anyway
+            except Exception as exc:  # the raw data are shown anyway
                 log(f"ERROR: analysis failed: {exc}")
                 return d, None, None
 
@@ -698,7 +734,7 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 res = ap.analyse_pauses(path, irf=irf)
                 return path, res, ap.run_summary(res, fo, fm)
-            except Exception as exc:                         # the raw data are shown anyway
+            except Exception as exc:  # the raw data are shown anyway
                 log(f"ERROR: analysis failed: {exc}")
                 return path, None, None
 
@@ -710,10 +746,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _show_run(self, run_dir: Path, res: dict | None, summ: dict | None) -> None:
         self.run_dir, self.res, self.summary = Path(run_dir), res, summ
-        self._set_figures(res)                               # the raw-data tab first, always
+        self._set_figures(res)  # the raw-data tab first, always
         if summ is None:
-            self.lbl_title.setText(f"<b>{self.run_dir.name}</b> &nbsp; <span style='color: {RED}'>the analysis "
-                                   "failed (see the log): the raw Felix and AMBIT data are in the 'Raw data' tab</span>")
+            self.lbl_title.setText(
+                f"<b>{self.run_dir.name}</b> &nbsp; <span style='color: {RED}'>the analysis "
+                "failed (see the log): the raw Felix and AMBIT data are in the 'Raw data' tab</span>"
+            )
             self.lbl_summary.setText("")
             self.lbl_warnings.setText("")
             self.table.clear()
@@ -728,9 +766,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self._log(f"could not save results.json: {exc}")
         self._fill_results(summ)
         self.tabs.setCurrentIndex(0)
-        self._log(f"{summ['run']}: phi2 AMBIT {_pm(summ['phi2_ambit'], summ['phi2_ambit_err'])}, "
-                  f"phi2 lifetime {_pm(summ['phi2_tau_mean'], summ['phi2_tau_sd'])}"
-                  + "".join(f"\n  WARNING: {w}" for w in summ["warnings"]))
+        self._log(
+            f"{summ['run']}: phi2 AMBIT {_pm(summ['phi2_ambit'], summ['phi2_ambit_err'])}, "
+            f"phi2 lifetime {_pm(summ['phi2_tau_mean'], summ['phi2_tau_sd'])}"
+            + "".join(f"\n  WARNING: {w}" for w in summ["warnings"])
+        )
         self.lbl_upload.setText("-")
 
     # --------------------------------------------------------------- results
@@ -738,36 +778,54 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_title.setText(f"<b>{s['run']}</b>" + (f" &nbsp; {s['note']}" if s.get("note") else ""))
         n = len(s["phi2_tau"])
         big = "font-size: 14pt; font-weight: bold"
-        html = (f"<p>phi2 from the AMBIT intensity, (Fm - Fo) / Fm = <span style='{big}'>"
-                f"{_pm(s['phi2_ambit'], s['phi2_ambit_err'])}</span><br>"
-                f"<span style='color: gray'>Fo = {_pm(s['fo_ambit'], s['fo_ambit_se'], 5)} ({s['n_fo']} points), "
-                f"Fm = {_pm(s['fm_ambit'], s['fm_ambit_se'], 5)} ({s['n_fm']} points); raw s_630 median "
-                f"{_num(s['s_630_fo_median'], 0)} / {_num(s['s_630_fm_median'], 0)} counts</span></p>"
-                f"<p>phi2 from the lifetimes, (t_amp,Fm - t_amp,Fo) / t_amp,Fm = <span style='{big}'>"
-                f"{_pm(s['phi2_tau_mean'], s['phi2_tau_sd'])}</span> &nbsp;"
-                f"<span style='color: gray'>mean ± SD of {n} pauses: "
-                f"{', '.join(_num(p) for p in s['phi2_tau'])}</span><br>"
-                f"<b>t_amp</b> Fo = {_pm(s['t_amp_fo'], s['t_amp_fo_err'])} ns, "
-                f"<span style='background: {HIGHLIGHT.name()}'><b>mean t_amp of the {n} Fm pauses = "
-                f"{_pm(s['t_amp_fm_mean'], s['t_amp_fm_sd'])} ns</b></span><br>"
-                f"<span style='color: gray'>t_int Fo = {_pm(s['t_int_fo'], s['t_int_fo_err'])} ns, "
-                f"mean t_int of the pauses = {_pm(s['t_int_fm_mean'], s.get('t_int_fm_sd'))} ns; "
-                f"tau2 Fo {_pm(s['tau2_fo'], s['tau2_fo_err'])} ns, mean tau2 of the pauses "
-                f"{_pm(s['tau2_fm_mean'], s['tau2_fm_sd'])} ns</span></p>")
+        html = (
+            f"<p>phi2 from the AMBIT intensity, (Fm - Fo) / Fm = <span style='{big}'>"
+            f"{_pm(s['phi2_ambit'], s['phi2_ambit_err'])}</span><br>"
+            f"<span style='color: gray'>Fo = {_pm(s['fo_ambit'], s['fo_ambit_se'], 5)} ({s['n_fo']} points), "
+            f"Fm = {_pm(s['fm_ambit'], s['fm_ambit_se'], 5)} ({s['n_fm']} points); raw s_630 median "
+            f"{_num(s['s_630_fo_median'], 0)} / {_num(s['s_630_fm_median'], 0)} counts</span></p>"
+            f"<p>phi2 from the lifetimes, (t_amp,Fm - t_amp,Fo) / t_amp,Fm = <span style='{big}'>"
+            f"{_pm(s['phi2_tau_mean'], s['phi2_tau_sd'])}</span> &nbsp;"
+            f"<span style='color: gray'>mean ± SD of {n} pauses: "
+            f"{', '.join(_num(p) for p in s['phi2_tau'])}</span><br>"
+            f"<b>t_amp</b> Fo = {_pm(s['t_amp_fo'], s['t_amp_fo_err'])} ns, "
+            f"<span style='background: {HIGHLIGHT.name()}'><b>mean t_amp of the {n} Fm pauses = "
+            f"{_pm(s['t_amp_fm_mean'], s['t_amp_fm_sd'])} ns</b></span><br>"
+            f"<span style='color: gray'>t_int Fo = {_pm(s['t_int_fo'], s['t_int_fo_err'])} ns, "
+            f"mean t_int of the pauses = {_pm(s['t_int_fm_mean'], s.get('t_int_fm_sd'))} ns; "
+            f"tau2 Fo {_pm(s['tau2_fo'], s['tau2_fo_err'])} ns, mean tau2 of the pauses "
+            f"{_pm(s['tau2_fm_mean'], s['tau2_fm_sd'])} ns</span></p>"
+        )
         self.lbl_summary.setText(html)
         if s["warnings"]:
-            self.lbl_warnings.setText(f"<ul style='color: {RED}; margin-top: 0'>"
-                                      + "".join(f"<li>{w}</li>" for w in s["warnings"]) + "</ul>")
+            self.lbl_warnings.setText(
+                f"<ul style='color: {RED}; margin-top: 0'>" + "".join(f"<li>{w}</li>" for w in s["warnings"]) + "</ul>"
+            )
         else:
             self.lbl_warnings.setText("<span style='color: gray'>no warnings</span>")
         self._fill_table(s)
 
     def _fill_table(self, s: dict) -> None:
-        cols = ["decay", "laser counts", "seconds", "tau1 [ns]", "share 1", "tau2 [ns]", "share 2", "t_amp [ns]",
-                "t_int [ns]", "t_mean [ns]", "IRF shift [ps]", "chi2r", "phi2 lifetime"]
+        cols = [
+            "decay",
+            "laser counts",
+            "seconds",
+            "tau1 [ns]",
+            "share 1",
+            "tau2 [ns]",
+            "share 2",
+            "t_amp [ns]",
+            "t_int [ns]",
+            "t_mean [ns]",
+            "IRF shift [ps]",
+            "chi2r",
+            "phi2 lifetime",
+        ]
         fits = [("reference (Fo): " + s["ref_name"], s["fits"]["reference"], None, None)]
         for k, f in enumerate(s["fits"]["pauses"]):
-            fits.append((f"Fm pause {k + 1} ({s['dark_ms'][k]:.0f} ms dark)", f, s["phi2_tau"][k], s["phi2_tau_err"][k]))
+            fits.append(
+                (f"Fm pause {k + 1} ({s['dark_ms'][k]:.0f} ms dark)", f, s["phi2_tau"][k], s["phi2_tau_err"][k])
+            )
         n = len(s["fits"]["pauses"])
         self.table.clear()
         self.table.setColumnCount(len(cols))
@@ -819,13 +877,15 @@ class MainWindow(QtWidgets.QMainWindow):
         put(r, 12, _pm(s["phi2_tau_mean"], s["phi2_tau_sd"]) + "  (± SD)", bold=True, highlight=True)
         self.table.resizeColumnsToContents()
         self.table.horizontalHeader().setStretchLastSection(True)
-        self.lbl_table_note.setText("2-exponential IRF reconvolution fit of every decay (reconv.py): tau1/tau2 with "
-                                    "their fit errors (*: shorter than half the IRF FWHM, unresolved; none: no photons, "
-                                    "the decay is a single exponential), share = photons of the component. t_amp = "
-                                    "amplitude-weighted lifetime, proportional to the yield (the amplitude of an "
-                                    "unresolved component is poorly determined and carries most of its error); t_int = "
-                                    "photon-weighted mean lifetime; t_mean = model-free mean arrival time. "
-                                    "phi2 lifetime = (t_amp,Fm - t_amp,Fo) / t_amp,Fm per pause.")
+        self.lbl_table_note.setText(
+            "2-exponential IRF reconvolution fit of every decay (reconv.py): tau1/tau2 with "
+            "their fit errors (*: shorter than half the IRF FWHM, unresolved; none: no photons, "
+            "the decay is a single exponential), share = photons of the component. t_amp = "
+            "amplitude-weighted lifetime, proportional to the yield (the amplitude of an "
+            "unresolved component is poorly determined and carries most of its error); t_int = "
+            "photon-weighted mean lifetime; t_mean = model-free mean arrival time. "
+            "phi2 lifetime = (t_amp,Fm - t_amp,Fo) / t_amp,Fm per pause."
+        )
 
     def _set_figures(self, res: dict | None) -> None:
         while self.tabs.count() > 1:
@@ -845,7 +905,9 @@ class MainWindow(QtWidgets.QMainWindow):
         keys = [k for k, _ in ap.fit_groups(res)]
         for key, fig in zip(keys, ap.plot_fits(res, save=True, show=False)):
             if fig is not None:
-                self._add_figure_tab("Decay fits: reference" if key == "laser" else f"Decay fits: Fm pauses ({key})", fig)
+                self._add_figure_tab(
+                    "Decay fits: reference" if key == "laser" else f"Decay fits: Fm pauses ({key})", fig
+                )
 
     def _add_figure_tab(self, title: str, fig) -> None:
         canvas = FigureCanvasQTAgg(fig)
@@ -860,7 +922,7 @@ class MainWindow(QtWidgets.QMainWindow):
         scroll.setWidget(inner)
         scroll.setWidgetResizable(True)
         self.tabs.addTab(scroll, title)
-        plt.close(fig)                                   # pyplot's bookkeeping; the figure lives in the canvas
+        plt.close(fig)  # pyplot's bookkeeping; the figure lives in the canvas
 
     # -------------------------------------------------------------- settings
     def _load_settings(self) -> None:

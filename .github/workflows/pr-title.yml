@@ -1,0 +1,40 @@
+# The squash merge makes the PR title the commit subject on main, and semantic-release reads those
+# subjects to pick the next version and write the release notes (.releaserc.json). So every PR title
+# must be a Conventional Commit. The same rule as openJII's "Linear ref check", without the Linear part.
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    name: PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const title = context.payload.pull_request.title || "";
+            const conventional = /^(feat|fix|perf|revert|docs|style|chore|refactor|test|build|ci)(\([^)\r\n]+\))?!?:\s+\S/;
+            if (!conventional.test(title)) {
+              core.setFailed([
+                `PR title "${title}" is not a Conventional Commit.`,
+                "",
+                "Use: <type>(<optional scope>): <description>",
+                "Example: fix(upload): keep each upload record with its run",
+                "",
+                "Types: feat, fix, perf, revert, docs, style, chore, refactor, test, build, ci.",
+                "feat releases a minor version, fix, perf and revert a patch, and a ! after the type",
+                "(feat!: ...) a major one. The other types release nothing.",
+              ].join("\n"));
+              return;
+            }
+            core.info(`PR title is a Conventional Commit: ${title}`);

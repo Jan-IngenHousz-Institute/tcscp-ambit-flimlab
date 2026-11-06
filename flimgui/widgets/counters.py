@@ -10,8 +10,8 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-SPAD_WARN_HZ = 1.0e6      # amber: pile-up territory and getting close to the limit
-SPAD_ALARM_HZ = 3.0e6     # red + beep: rated maximum count rate of the SPAD
+SPAD_WARN_HZ = 1.0e6  # amber: pile-up territory and getting close to the limit
+SPAD_ALARM_HZ = 3.0e6  # red + beep: rated maximum count rate of the SPAD
 PILEUP_WARN_RATIO = 0.05  # detector / sync above 5 % distorts the decay
 
 
@@ -92,9 +92,12 @@ class CounterTile(QFrame):
         colours = {"ok": "", "warn": "background-color: #ffe9a8;", "alarm": "background-color: #ff9a9a;"}
         self.setStyleSheet(f"QFrame#tile {{ border: 1px solid #999; border-radius: 6px; {colours[self.level]} }}")
         self.name_lbl.setToolTip(
-            {"ok": "",
-             "warn": "Above 1 Mcps: pile-up distorts the decay. Reduce the light reaching the SPAD.",
-             "alarm": "Above 3 Mcps: the SPAD is at its rated maximum. Reduce the light now."}[self.level])
+            {
+                "ok": "",
+                "warn": "Above 1 Mcps: pile-up distorts the decay. Reduce the light reaching the SPAD.",
+                "alarm": "Above 3 Mcps: the SPAD is at its rated maximum. Reduce the light now.",
+            }[self.level]
+        )
 
 
 class CounterPanel(QWidget):
@@ -114,8 +117,9 @@ class CounterPanel(QWidget):
             self.tiles[ch] = tile
             lay.addWidget(tile)
         self.pileup_lbl = QLabel("pile-up: --")
-        self.pileup_lbl.setToolTip("Detector rate divided by sync rate. Keep it below 5 % for a "
-                                   "clean decay (single-hit histogram).")
+        self.pileup_lbl.setToolTip(
+            "Detector rate divided by sync rate. Keep it below 5 % for a clean decay (single-hit histogram)."
+        )
         lay.addWidget(self.pileup_lbl)
         self.rates: dict[int, float] = {}
 
@@ -130,8 +134,10 @@ class CounterPanel(QWidget):
             ratio = max(others) / sync
             colour = "#b00000" if ratio > PILEUP_WARN_RATIO else ""
             self.pileup_lbl.setStyleSheet(f"color: {colour}; font-weight: bold;" if colour else "")
-            self.pileup_lbl.setText(f"pile-up: {ratio * 100:.2f} % of sync rate"
-                                    + ("  (too high, lower the light)" if ratio > PILEUP_WARN_RATIO else ""))
+            self.pileup_lbl.setText(
+                f"pile-up: {ratio * 100:.2f} % of sync rate"
+                + ("  (too high, lower the light)" if ratio > PILEUP_WARN_RATIO else "")
+            )
         else:
             self.pileup_lbl.setStyleSheet("")
             self.pileup_lbl.setText("pile-up: -- (no sync)")

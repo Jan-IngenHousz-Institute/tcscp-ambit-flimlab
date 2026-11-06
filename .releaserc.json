@@ -1,0 +1,61 @@
+{
+  "branches": ["main"],
+  "tagFormat": "v${version}",
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "conventionalcommits",
+        "releaseRules": [
+          { "type": "feat", "release": "minor" },
+          { "type": "fix", "release": "patch" },
+          { "type": "perf", "release": "patch" },
+          { "type": "revert", "release": "patch" },
+          { "type": "docs", "release": false },
+          { "type": "style", "release": false },
+          { "type": "chore", "release": false },
+          { "type": "refactor", "release": false },
+          { "type": "test", "release": false },
+          { "type": "build", "release": false },
+          { "type": "ci", "release": false },
+          { "breaking": true, "release": "major" }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits",
+        "presetConfig": {
+          "types": [
+            { "type": "feat", "section": "Features", "hidden": false },
+            { "type": "fix", "section": "Bug fixes", "hidden": false },
+            { "type": "perf", "section": "Performance", "hidden": false },
+            { "type": "revert", "section": "Reverts", "hidden": false },
+            { "type": "docs", "section": "Documentation", "hidden": false },
+            { "type": "style", "section": "Style", "hidden": false },
+            { "type": "chore", "section": "Chores", "hidden": false },
+            { "type": "refactor", "section": "Refactoring", "hidden": false },
+            { "type": "test", "section": "Tests", "hidden": false },
+            { "type": "build", "section": "Build system", "hidden": false },
+            { "type": "ci", "section": "Continuous integration", "hidden": false }
+          ]
+        }
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "successComment": false,
+        "failComment": false,
+        "releasedLabels": false,
+        "assets": [
+          { "path": "out/phi2gui-*.zip" },
+          { "path": "out/SHA256SUMS" }
+        ],
+        "releaseNameTemplate": "phi2 GUI <%= nextRelease.version %>",
+        "releaseBodyTemplate": "Download the zip for your computer, extract all of it and read README.txt inside. Each zip holds everything the app needs, so you install nothing else.\n\n| Computer | Zip | Felix |\n| --- | --- | --- |\n| Windows 10 or 11, 64-bit | `phi2gui-v<%= nextRelease.version %>-win64.zip` | Yes. The app offers to install the Felix driver. |\n| Linux x64, glibc 2.35 or newer | `phi2gui-v<%= nextRelease.version %>-linux-x64.zip` | Yes, after the udev rule in README.txt. Nobody has measured with it yet. |\n| macOS, Apple silicon | `phi2gui-v<%= nextRelease.version %>-macos-arm64.zip` | No. TEDIEL ships no macOS library, so a Mac opens and uploads saved runs. |\n\n<%= nextRelease.notes %>"
+      }
+    ]
+  ]
+}

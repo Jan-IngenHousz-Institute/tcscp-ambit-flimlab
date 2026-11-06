@@ -19,22 +19,22 @@ class HistSettings:
     ref_ch: int = 0
     meas_ch: int = 1
     left_ns: float = 0.0
-    right_ns: float = 12.5        # one period of the laser at 80 MHz
-    bin_ps: float = 0.0          # 0 = smallest the hardware allows
+    right_ns: float = 12.5  # one period of the laser at 80 MHz
+    bin_ps: float = 0.0  # 0 = smallest the hardware allows
     multi_hit: bool = False
     accumulate: bool = True
     refresh_s: float = 0.5
     enabled: bool = False
 
     @classmethod
-    def from_dict(cls, d: dict) -> "HistSettings":
+    def from_dict(cls, d: dict) -> HistSettings:
         known = {k: d[k] for k in cls.__dataclass_fields__ if k in d}
         return cls(**known)
 
 
 @dataclass
 class Settings:
-    thresholds_v: dict[str, float] = field(default_factory=dict)   # key: channel index as str
+    thresholds_v: dict[str, float] = field(default_factory=dict)  # key: channel index as str
     delays_ns: dict[str, float] = field(default_factory=dict)
     histograms: list[dict] = field(default_factory=list)
     active_irf: str = ""
@@ -57,7 +57,7 @@ class Settings:
         self.histograms[idx] = asdict(h)
 
     @classmethod
-    def load(cls, path: Path = SETTINGS_PATH) -> "Settings":
+    def load(cls, path: Path = SETTINGS_PATH) -> Settings:
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
         except FileNotFoundError:

@@ -5,8 +5,16 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QCheckBox, QFormLayout, QGroupBox, QLabel, QSpinBox, QTableWidget,
-                               QTableWidgetItem, QVBoxLayout)
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QFormLayout,
+    QGroupBox,
+    QLabel,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+)
 
 from ..fitting import FitResult
 
@@ -89,8 +97,9 @@ class FitPanel(QGroupBox):
             self.mode_lbl.setText("mode: --")
             self.msg_lbl.setText(r.message if r is not None else "")
             return
-        self.mode_lbl.setText("mode: reconvolution with IRF" if r.mode == "reconv"
-                              else "mode: tail fit (no IRF active)")
+        self.mode_lbl.setText(
+            "mode: reconvolution with IRF" if r.mode == "reconv" else "mode: tail fit (no IRF active)"
+        )
         fr = r.fractions
         self.table.setRowCount(r.n_exp)
         for i in range(r.n_exp):
@@ -100,6 +109,5 @@ class FitPanel(QGroupBox):
         self.tau_amp_lbl.setText(f"{_fmt(r.tau_amp_ns, 3)} ns")
         self.tau_int_lbl.setText(f"intensity-weighted: {_fmt(r.tau_int_ns, 3)} ns")
         shift = f"{r.shift_ns * 1000:.0f} ps" if r.mode == "reconv" else "n/a"
-        self.stats_lbl.setText(f"chi2r: {_fmt(r.chi2r, 2)}   background: {_fmt(r.bg, 2)} /bin   "
-                               f"shift: {shift}")
+        self.stats_lbl.setText(f"chi2r: {_fmt(r.chi2r, 2)}   background: {_fmt(r.bg, 2)} /bin   shift: {shift}")
         self.msg_lbl.setText("" if r.success else f"fit did not converge: {r.message}")

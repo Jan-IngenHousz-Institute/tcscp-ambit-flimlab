@@ -3,18 +3,39 @@
 `.github/workflows/gui-release.yml` builds the standalone phi2 GUI for Windows, Linux and macOS and
 publishes it on the Releases page. Nobody builds or tags a release by hand.
 
+## Pull requests and checks
+
+Every change reaches `main` through a pull request, and GitHub merges it as one squash commit whose
+subject is the PR title. A ruleset on `main` enforces that and lets nobody bypass it. Before the
+merge button works, these checks must pass:
+
+| Check | Workflow | What it runs |
+| --- | --- | --- |
+| `PR title` | `pr-title.yml` | The title is a Conventional Commit, such as `fix(upload): keep each record with its run` |
+| `lint` | `ci.yml` | `ruff check` and `ruff format --check` |
+| `test` | `ci.yml` | `pytest` |
+| `Build (win64)`, `Build (linux-x64)`, `Build (macos-arm64)` | `gui-release.yml` | The tests on each platform, the build, the bundle check and the smoke test |
+
+The three builds keep their zips on the run as artifacts for 30 days, so a reviewer can try the app
+before merging. `uv run ruff check --fix . && uv run ruff format .` fixes most lint findings
+locally.
+
 ## What happens on a merge
 
-| Event | Result |
-| --- | --- |
-| Pull request that touches the GUI | Tests, three builds, the bundle check and the smoke test. The zips stay on the run as artifacts for 30 days. |
-| Merge to `main` that touches the GUI | The same, then a GitHub release `v<version>` with three zips and `SHA256SUMS`, marked Latest |
-| Change to CAD, docs or notebooks only | No build and no release |
-| Manual run, `workflow_dispatch` | Builds and artifacts, never a release |
+semantic-release reads the subjects merged since the last tag and decides, following openJII's rules
+in `.releaserc.json`:
 
-The `paths` list at the top of the workflow defines "touches the GUI". It covers the library and
-`phi2gui`, `flimgui`, `irf-library`, `packaging`, `pyproject.toml`, `uv.lock`,
-`build_phi2gui.bat` and the workflow file itself.
+| PR title type | Release |
+| --- | --- |
+| `feat` | A new minor version, 0.1.7 to 0.2.0 |
+| `fix`, `perf`, `revert` | A new patch version, 0.1.7 to 0.1.8 |
+| Any type with `!`, such as `feat!:`, or a `BREAKING CHANGE:` footer | A new major version |
+| `docs`, `style`, `chore`, `refactor`, `test`, `build`, `ci` | None |
+
+When a release is due, the workflow builds the three zips under that version, and semantic-release
+tags the commit `v<version>` and publishes the release with the zips, `SHA256SUMS` and notes grouped
+by type. When none is due, nothing is built or published. A manual run, `workflow_dispatch`, builds
+the zips and never releases.
 
 | Zip | Built on | Runs on |
 | --- | --- | --- |
@@ -27,16 +48,10 @@ runs on newer ones and not the other way round.
 
 ## The version
 
-`packaging/stamp_version.py` takes the latest `v*` tag and adds one to the patch number, unless
-`__version__` in `scripts/ambit-gate/phi2gui/__init__.py` is already higher. One job picks the
-number, and every build writes it into its executable, so the three apps and the release agree.
-
-- For a normal change, leave `__version__` alone. It lags behind the tags on `main`, and that is
-  expected.
-- For a new minor or major version, set `__version__` to it, say `0.2.0`, in the pull request.
-
-If another commit already holds the tag, the run fails instead of overwriting it, and running the
-workflow again builds the next number. A rerun for a commit that is already released does nothing.
+The version comes from the PR titles, so nobody edits it. `__version__` in
+`scripts/ambit-gate/phi2gui/__init__.py` stays `0.0.0` in git. One job picks the number, and every
+build writes it into its executable with `packaging/stamp_version.py`, so the three apps and the
+release agree. A pull request builds as the last tag plus `+pr.<number>`, such as `0.1.7+pr.8`.
 
 ## Self-contained builds
 

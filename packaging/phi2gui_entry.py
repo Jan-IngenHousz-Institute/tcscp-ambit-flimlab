@@ -5,6 +5,7 @@ stdout/stderr (tracebacks of background tasks, Qt warnings) is kept in phi2gui.l
 executable on Windows and Linux, in ~/Library/Logs on macOS, where the .app bundle must stay
 unmodified. Running from source (phi2gui.bat / python -m phi2gui) is unchanged.
 """
+
 import sys
 from pathlib import Path
 

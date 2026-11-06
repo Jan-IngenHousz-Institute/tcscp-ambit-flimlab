@@ -43,41 +43,40 @@ import serial.tools.list_ports
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent.parent
 if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))          # for flimgui.fitting (optional)
+    sys.path.insert(0, str(REPO_ROOT))  # for flimgui.fitting (optional)
 
 try:
-    from flimgui.fitting import fit_decay       # tail fit, no IRF needed
-except Exception:                               # scipy missing or repo moved
+    from flimgui.fitting import fit_decay  # tail fit, no IRF needed
+except Exception:  # scipy missing or repo moved
     fit_decay = None
 
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
 BAUD = 115200
-LASER_REP_RATE_HZ = 80e6        # laser mode selector; 12.5 ns period
-SYNC_CH, SPAD_CH = 0, 1         # Felix SYNC = channel 0, SPAD on CH1
-THRESHOLD_V = 1.2               # both signals are 2.5 V LVTTL
-WINDOW_S = 0.1                  # Felix window length (period mode)
-PRE_S = 1.0                     # Felix runs this long before the arrun is sent
-POST_S = 1.0                    # ... and this long after the protocol ends
-NOMINAL_LATENCY_S = 0.04        # command parse + config + warm-up before sample 0 (fallback)
-ACTINIC_ON = 3                  # firmware: actinic byte > 3 switches the LED on
+LASER_REP_RATE_HZ = 80e6  # laser mode selector; 12.5 ns period
+SYNC_CH, SPAD_CH = 0, 1  # Felix SYNC = channel 0, SPAD on CH1
+THRESHOLD_V = 1.2  # both signals are 2.5 V LVTTL
+WINDOW_S = 0.1  # Felix window length (period mode)
+PRE_S = 1.0  # Felix runs this long before the arrun is sent
+POST_S = 1.0  # ... and this long after the protocol ends
+NOMINAL_LATENCY_S = 0.04  # command parse + config + warm-up before sample 0 (fallback)
+ACTINIC_ON = 3  # firmware: actinic byte > 3 switches the LED on
 
 # The experiment asked for: 1 s dark, 1 s actinic at 250 mA, 3 s relaxation, 10 Hz.
 # type 2 = no 730 nm reference pulses (keeps the SPAD band clean).
 DEFAULT_PROTOCOL = [
-    dict(type=2, far_red=0, pulses=10, freq=10, actinic=0,   subsampling=0),
+    dict(type=2, far_red=0, pulses=10, freq=10, actinic=0, subsampling=0),
     dict(type=2, far_red=0, pulses=10, freq=10, actinic=250, subsampling=0),
-    dict(type=2, far_red=0, pulses=30, freq=10, actinic=0,   subsampling=0),
+    dict(type=2, far_red=0, pulses=30, freq=10, actinic=0, subsampling=0),
 ]
 
 # USB-serial bridges an AMBIT is usually seen behind; probed first.
-KNOWN_VIDS = {0x1A86: "WCH CH340/CH9102", 0x10C4: "Silicon Labs CP210x",
-              0x0403: "FTDI", 0x303A: "Espressif native USB"}
+KNOWN_VIDS = {0x1A86: "WCH CH340/CH9102", 0x10C4: "Silicon Labs CP210x", 0x0403: "FTDI", 0x303A: "Espressif native USB"}
 HELLO_RE = re.compile(r"NEW\s+(?P<name>.*?)\s+Ready(?:\s+FW:(?P<fw>\S+))?")
 DATA_RE = re.compile(r"Data:(?P<tag>[^,]+),Length:(?P<n>\d+)\s*(?P<vals>.*)")
-MAX_SEGMENTS = 16               # do_command.h: arr[128] = 16 lines x 8 bytes
-MAX_POINTS = 1999               # data_utils.h: MAX_DATACLASS_SIZE - 1
+MAX_SEGMENTS = 16  # do_command.h: arr[128] = 16 lines x 8 bytes
+MAX_POINTS = 1999  # data_utils.h: MAX_DATACLASS_SIZE - 1
 
 
 # ---------------------------------------------------------------------------
@@ -130,10 +129,10 @@ def _probe(device: str, log=print):
     except serial.SerialException as exc:
         log(f"  {device}: cannot open ({exc})")
         return None
-    time.sleep(0.3)                     # drop a boot banner if opening reset the board
+    time.sleep(0.3)  # drop a boot banner if opening reset the board
     m = _say_hello(ser)
     if m is None:
-        time.sleep(2.0)                 # give a reset board time to boot, ask again
+        time.sleep(2.0)  # give a reset board time to boot, ask again
         m = _say_hello(ser)
     if m is None:
         ser.close()
@@ -177,8 +176,16 @@ def build_arrun(protocol: list[dict], persist: int = 0, verb: str = "arrun2") ->
             raise ValueError(f"segment {i}: pulses 1..65535, freq 1..2000 Hz")
         if not 0 <= s["actinic"] <= 255 or s["subsampling"] not in (0, 1, 2):
             raise ValueError(f"segment {i}: actinic 0..255, subsampling 0/1/2")
-        values += [s["type"], s["far_red"], s["pulses"] >> 8, s["pulses"] & 0xFF,
-                   s["freq"] >> 8, s["freq"] & 0xFF, s["actinic"], s["subsampling"]]
+        values += [
+            s["type"],
+            s["far_red"],
+            s["pulses"] >> 8,
+            s["pulses"] & 0xFF,
+            s["freq"] >> 8,
+            s["freq"] & 0xFF,
+            s["actinic"],
+            s["subsampling"],
+        ]
     # Every argument is read with a ',' terminator, so the line ends with a comma.
     return f"{verb}," + ",".join(map(str, values)) + ",\n"
 
@@ -202,8 +209,7 @@ def time_axis(protocol: list[dict]):
     return np.concatenate(t), edges
 
 
-def run_arrun(link: AmbitLink, cmd: str, protocol: list[dict], margin_s: float = 10.0,
-              log=print):
+def run_arrun(link: AmbitLink, cmd: str, protocol: list[dict], margin_s: float = 10.0, log=print):
     """Send ``cmd``, read until ``Data sent``. Returns (data dict, t_send, t_done)."""
     duration = protocol_duration(protocol)
     ser = link.ser
@@ -244,16 +250,16 @@ def run_arrun(link: AmbitLink, cmd: str, protocol: list[dict], margin_s: float =
 # ---------------------------------------------------------------------------
 @dataclass
 class Window:
-    k: int                      # window index (0 = first after start of acquisition)
+    k: int  # window index (0 = first after start of acquisition)
     win_id: int
-    t_cb: float                 # monotonic time the window arrived on the PC
-    bins: np.ndarray            # real bins only (uint64)
+    t_cb: float  # monotonic time the window arrived on the PC
+    bins: np.ndarray  # real bins only (uint64)
     lost: bool = False
     overflow: bool = False
 
 
-FELIX_VID, FELIX_PID = 0x0403, 0x6C68   # USB ids of the Felix (TEDIEL); interface 0 is the WinUSB one
-CM_PROB_FAILED_INSTALL = 28             # Windows problem code: device present, no driver installed
+FELIX_VID, FELIX_PID = 0x0403, 0x6C68  # USB ids of the Felix (TEDIEL); interface 0 is the WinUSB one
+CM_PROB_FAILED_INSTALL = 28  # Windows problem code: device present, no driver installed
 
 
 def felix_usb_state(interface: int = 0) -> dict:
@@ -270,18 +276,26 @@ def felix_usb_state(interface: int = 0) -> dict:
     import ctypes.wintypes as wt
 
     class DevInfoData(ctypes.Structure):
-        _fields_ = [("cbSize", wt.DWORD), ("ClassGuid", ctypes.c_byte * 16),
-                    ("DevInst", wt.DWORD), ("Reserved", ctypes.c_void_p)]
+        _fields_ = [
+            ("cbSize", wt.DWORD),
+            ("ClassGuid", ctypes.c_byte * 16),
+            ("DevInst", wt.DWORD),
+            ("Reserved", ctypes.c_void_p),
+        ]
 
     setupapi, cfgmgr = ctypes.WinDLL("setupapi"), ctypes.WinDLL("cfgmgr32")
     setupapi.SetupDiGetClassDevsW.restype = ctypes.c_void_p
     setupapi.SetupDiGetClassDevsW.argtypes = [ctypes.c_void_p, wt.LPCWSTR, wt.HWND, wt.DWORD]
     setupapi.SetupDiEnumDeviceInfo.argtypes = [ctypes.c_void_p, wt.DWORD, ctypes.POINTER(DevInfoData)]
-    setupapi.SetupDiGetDeviceInstanceIdW.argtypes = [ctypes.c_void_p, ctypes.POINTER(DevInfoData),
-                                                      wt.LPWSTR, wt.DWORD, ctypes.POINTER(wt.DWORD)]
+    setupapi.SetupDiGetDeviceInstanceIdW.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(DevInfoData),
+        wt.LPWSTR,
+        wt.DWORD,
+        ctypes.POINTER(wt.DWORD),
+    ]
     setupapi.SetupDiDestroyDeviceInfoList.argtypes = [ctypes.c_void_p]
-    cfgmgr.CM_Get_DevNode_Status.argtypes = [ctypes.POINTER(wt.ULONG), ctypes.POINTER(wt.ULONG),
-                                             wt.DWORD, wt.ULONG]
+    cfgmgr.CM_Get_DevNode_Status.argtypes = [ctypes.POINTER(wt.ULONG), ctypes.POINTER(wt.ULONG), wt.DWORD, wt.ULONG]
     DIGCF_PRESENT, DIGCF_ALLCLASSES = 0x2, 0x4
     hdev = setupapi.SetupDiGetClassDevsW(None, "USB", None, DIGCF_PRESENT | DIGCF_ALLCLASSES)
     if not hdev or hdev == ctypes.c_void_p(-1).value:
@@ -314,15 +328,19 @@ def felix_usb_hint() -> str:
     if not st["present"]:
         return "No Felix on USB: check the USB cable and the 5 V supply."
     if st["problem"] == CM_PROB_FAILED_INSTALL:
-        return ("The Felix is plugged in but Windows has no driver for it: install TEDIEL's Felix WinUSB "
-                "driver (the phi2 GUI offers to do it; also at https://tediel.com/resources).")
+        return (
+            "The Felix is plugged in but Windows has no driver for it: install TEDIEL's Felix WinUSB "
+            "driver (the phi2 GUI offers to do it; also at https://tediel.com/resources)."
+        )
     if st["problem"]:
         return f"The Felix is plugged in but Windows reports problem code {st['problem']} for it (Device Manager)."
-    return ("The Felix is plugged in with its driver but could not be opened: close TDC-Software "
-            "(only one program can use the Felix), or unplug and replug it.")
+    return (
+        "The Felix is plugged in with its driver but could not be opened: close TDC-Software "
+        "(only one program can use the Felix), or unplug and replug it."
+    )
 
 
-REJECTION_WARN = 0.5                    # TDC drop fraction above which the Felix is declared wedged
+REJECTION_WARN = 0.5  # TDC drop fraction above which the Felix is declared wedged
 
 
 def rejection_warning(rejection: float, spad_cps: float = float("inf")) -> str | None:
@@ -330,8 +348,10 @@ def rejection_warning(rejection: float, spad_cps: float = float("inf")) -> str |
     (ignored below 10 kcps, where the fraction is noise)."""
     if rejection != rejection or rejection <= REJECTION_WARN or spad_cps < 1e4:
         return None
-    return (f"the Felix TDC drops {rejection:.0%} of the SPAD events: the histograms would be empty. "
-            "Unplug and replug the Felix (or power-cycle it) and reconnect")
+    return (
+        f"the Felix TDC drops {rejection:.0%} of the SPAD events: the histograms would be empty. "
+        "Unplug and replug the Felix (or power-cycle it) and reconnect"
+    )
 
 
 class FelixLink:
@@ -367,15 +387,17 @@ class FelixLink:
             except Exception:
                 return False
 
-    def open(self) -> "FelixLink":
+    def open(self) -> FelixLink:
         try:
             import pylibtdc as tdc
         except ImportError as exc:
-            raise RuntimeError("pylibtdc is not installed in this Python: run 'uv sync' in the repository "
-                               "folder. TEDIEL ships it for Windows and Linux (x64) only, so a Mac cannot "
-                               "drive the Felix") from exc
+            raise RuntimeError(
+                "pylibtdc is not installed in this Python: run 'uv sync' in the repository "
+                "folder. TEDIEL ships it for Windows and Linux (x64) only, so a Mac cannot "
+                "drive the Felix"
+            ) from exc
         self.tdc = tdc
-        backend = tdc.TDCBackend()          # never pass a callback: it aborts the process
+        backend = tdc.TDCBackend()  # never pass a callback: it aborts the process
         devices = backend.getDevices()
         if not devices:
             raise RuntimeError("No Felix found. " + felix_usb_hint())
@@ -393,7 +415,7 @@ class FelixLink:
         thr = backend.getProgrammableThreshold()
         self.thr = thr[0] if thr else None
         self.counter = None
-        for c in backend.getTDCCounter():       # INPUTLOGIC = rate at the SMA
+        for c in backend.getTDCCounter():  # INPUTLOGIC = rate at the SMA
             if "INPUT" in str(getattr(c, "counterType", "")).upper():
                 self.counter = c
         if self.counter is None:
@@ -402,7 +424,7 @@ class FelixLink:
         hists = list(backend.getTDCHistogrammer())
         if not hists:
             raise RuntimeError("the Felix reports no histogram module")
-        for h in hists:                           # a previous program may have left one running
+        for h in hists:  # a previous program may have left one running
             try:
                 h.disable(True)
             except Exception:
@@ -417,9 +439,11 @@ class FelixLink:
                 pass
         rising = tdc.TDCChannel.edgeTrigger_type.RISING
         self._edge_requests = [ch.requestEdge(rising) for ch in self.channels]
-        self.description = (f"{dev.get('description', 'Felix')} S/N {dev.get('serial_number', '?')}"
-                            f" | {len(self.channels)} channels, {len(hists)} histogram modules"
-                            f" | libTDC {backend.version()}")
+        self.description = (
+            f"{dev.get('description', 'Felix')} S/N {dev.get('serial_number', '?')}"
+            f" | {len(self.channels)} channels, {len(hists)} histogram modules"
+            f" | libTDC {backend.version()}"
+        )
         self.log("Felix: " + self.description)
         return self
 
@@ -454,9 +478,8 @@ class FelixLink:
         t_int, counts = self.counter.getCounts()
         vals = list(counts)
         n_ch = len(self.channels)
-        offset = 1 if len(vals) > n_ch else 0    # older firmware prepends an internal counter
-        return {ch: vals[ch + offset] / t_int for ch in range(n_ch)
-                if ch + offset < len(vals) and t_int > 0}
+        offset = 1 if len(vals) > n_ch else 0  # older firmware prepends an internal counter
+        return {ch: vals[ch + offset] / t_int for ch in range(n_ch) if ch + offset < len(vals) and t_int > 0}
 
     def tdc_rejection(self, integration_s: float = 0.5, channel: int = SPAD_CH) -> float:
         """Fraction of the events arriving on ``channel`` that the TDC core drops: growth of the
@@ -480,20 +503,23 @@ class FelixLink:
         except Exception:
             return float("nan")
 
-    def configure_histogram(self, ref=SYNC_CH, meas=SPAD_CH, left_s=0.0,
-                            right_s=1.0 / LASER_REP_RATE_HZ, bin_s=None) -> None:
+    def configure_histogram(
+        self, ref=SYNC_CH, meas=SPAD_CH, left_s=0.0, right_s=1.0 / LASER_REP_RATE_HZ, bin_s=None
+    ) -> None:
         rising = self.tdc.TDCChannel.edgeTrigger_type.RISING
         h = self.hist
         h.setRefCh(int(ref), rising)
         h.setMeasCh(int(meas), rising)
         h.setBounds(float(left_s), None if not bin_s else float(bin_s), float(right_s))
         h.multiHit = False
-        h.accumulate = False                      # every window is delivered on its own
-        left, bw, right = h.getBounds()           # device order: left, binWidth, right
+        h.accumulate = False  # every window is delivered on its own
+        left, bw, right = h.getBounds()  # device order: left, binWidth, right
         self.left_s, self.bin_s, self.right_s = float(left), float(bw), float(right)
         self.n_bins = int(round((self.right_s - self.left_s) / self.bin_s))
-        self.log(f"Felix histogram: {self.left_s*1e9:.2f}..{self.right_s*1e9:.2f} ns, "
-                 f"bin {self.bin_s*1e12:.2f} ps, {self.n_bins} bins")
+        self.log(
+            f"Felix histogram: {self.left_s * 1e9:.2f}..{self.right_s * 1e9:.2f} ns, "
+            f"bin {self.bin_s * 1e12:.2f} ps, {self.n_bins} bins"
+        )
 
     # acquisition ----------------------------------------------------------
     def start_windows(self, window_s: float, n_windows: int) -> float:
@@ -514,17 +540,21 @@ class FelixLink:
                 return
             arr = np.array(list(bins)[:n_bins], dtype=np.uint64)
             with self._lock:
-                w = Window(k=len(self.windows), win_id=int(getattr(status, "winID", 0)),
-                           t_cb=time.monotonic(), bins=arr,
-                           lost=bool(getattr(status, "lost", False)),
-                           overflow=bool(getattr(status, "overflow", False)))
+                w = Window(
+                    k=len(self.windows),
+                    win_id=int(getattr(status, "winID", 0)),
+                    t_cb=time.monotonic(),
+                    bins=arr,
+                    lost=bool(getattr(status, "lost", False)),
+                    overflow=bool(getattr(status, "overflow", False)),
+                )
                 self.windows.append(w)
                 if len(self.windows) >= self._n_expected:
                     self._done.set()
 
         self.hist.setCallback(cb)
         try:
-            self.hist.enableWaitForSOA(2.0)       # enable() returns at the real start
+            self.hist.enableWaitForSOA(2.0)  # enable() returns at the real start
         except Exception:
             pass
         actual = self.hist.enable(float(window_s), int(n_windows))
@@ -539,7 +569,7 @@ class FelixLink:
         except Exception:
             pass
         try:
-            self.hist.setCallback()              # clear the user callback
+            self.hist.setCallback()  # clear the user callback
         except Exception:
             pass
         return ok
@@ -552,7 +582,7 @@ class FelixLink:
 class RunResult:
     protocol: list[dict]
     cmd: str
-    ambit: dict                     # tag -> array
+    ambit: dict  # tag -> array
     windows: list[Window]
     window_s: float
     t_soa: float
@@ -565,9 +595,9 @@ class RunResult:
     ambit_name: str = ""
     ambit_fw: str = ""
     felix_desc: str = ""
-    run_start: float = float("nan")     # Felix-clock (monotonic) time of AMBIT sample 0
+    run_start: float = float("nan")  # Felix-clock (monotonic) time of AMBIT sample 0
     align_mode: str = "nominal"
-    flash_measured: tuple = ()          # (onset, end) in monotonic seconds, if detected
+    flash_measured: tuple = ()  # (onset, end) in monotonic seconds, if detected
     summary: list[dict] = field(default_factory=list)
 
     # derived ---------------------------------------------------------------
@@ -588,9 +618,18 @@ class RunResult:
         return np.vstack([w.bins for w in self.windows]) if self.windows else np.zeros((0, 0))
 
 
-def run_gated(ambit: AmbitLink, felix: FelixLink, protocol=None, window_s=WINDOW_S,
-              pre_s=PRE_S, post_s=POST_S, laser_hz=LASER_REP_RATE_HZ, threshold_v=THRESHOLD_V,
-              out_dir: Path | str | None = None, log=print) -> RunResult:
+def run_gated(
+    ambit: AmbitLink,
+    felix: FelixLink,
+    protocol=None,
+    window_s=WINDOW_S,
+    pre_s=PRE_S,
+    post_s=POST_S,
+    laser_hz=LASER_REP_RATE_HZ,
+    threshold_v=THRESHOLD_V,
+    out_dir: Path | str | None = None,
+    log=print,
+) -> RunResult:
     """Run the protocol on the AMBIT while the Felix records contiguous windows."""
     protocol = list(protocol or DEFAULT_PROTOCOL)
     cmd = build_arrun(protocol)
@@ -601,17 +640,16 @@ def run_gated(ambit: AmbitLink, felix: FelixLink, protocol=None, window_s=WINDOW
     rates = felix.count_rates(0.5)
     log("Felix input rates: " + ", ".join(f"ch{c}={r:,.0f}/s" for c, r in rates.items()))
     if rates.get(SYNC_CH, 0) < 0.9 * laser_hz:
-        log("WARNING: SYNC rate below the laser repetition rate. Check SYNC cable, laser mode, "
-            "threshold.")
+        log("WARNING: SYNC rate below the laser repetition rate. Check SYNC cable, laser mode, threshold.")
     warn = rejection_warning(felix.tdc_rejection(0.5), rates.get(SPAD_CH, 0))
     if warn:
         log("WARNING: " + warn)
     felix.configure_histogram(SYNC_CH, SPAD_CH, 0.0, 1.0 / laser_hz)
 
-    log(f"Felix: {n_windows} windows of {window_s*1e3:.0f} ms ...")
+    log(f"Felix: {n_windows} windows of {window_s * 1e3:.0f} ms ...")
     actual = felix.start_windows(window_s, n_windows)
     if abs(actual - window_s) > 0.05 * window_s:
-        log(f"note: Felix rounded the window to {actual*1e3:.2f} ms")
+        log(f"note: Felix rounded the window to {actual * 1e3:.2f} ms")
     time.sleep(pre_s)
     log("AMBIT: " + cmd.strip())
     data, t_send, t_done = run_arrun(ambit, cmd, protocol, log=log)
@@ -619,11 +657,23 @@ def run_gated(ambit: AmbitLink, felix: FelixLink, protocol=None, window_s=WINDOW
     if not ok:
         log(f"WARNING: Felix delivered {len(felix.windows)} of {n_windows} windows")
 
-    res = RunResult(protocol=protocol, cmd=cmd, ambit=data, windows=list(felix.windows),
-                    window_s=felix.window_s, t_soa=felix.t_soa, t_send=t_send, t_done=t_done,
-                    bin_s=felix.bin_s, left_s=felix.left_s, laser_hz=laser_hz,
-                    rates_before=rates, ambit_name=ambit.name, ambit_fw=ambit.fw,
-                    felix_desc=felix.description)
+    res = RunResult(
+        protocol=protocol,
+        cmd=cmd,
+        ambit=data,
+        windows=list(felix.windows),
+        window_s=felix.window_s,
+        t_soa=felix.t_soa,
+        t_send=t_send,
+        t_done=t_done,
+        bin_s=felix.bin_s,
+        left_s=felix.left_s,
+        laser_hz=laser_hz,
+        rates_before=rates,
+        ambit_name=ambit.name,
+        ambit_fw=ambit.fw,
+        felix_desc=felix.description,
+    )
     align(res, log=log)
     analyse(res, log=log)
     if out_dir is not None:
@@ -658,10 +708,12 @@ def align(res: RunResult, nominal_latency_s: float = NOMINAL_LATENCY_S, log=prin
         return
     dark = float(np.median(tot[~lit]))
     if dark <= 0 or sat / dark < 3.0:
-        log(f"flash not visible in the Felix totals (contrast {sat / max(dark, 1):.1f}); "
-            f"using the nominal latency of {nominal_latency_s*1e3:.0f} ms")
+        log(
+            f"flash not visible in the Felix totals (contrast {sat / max(dark, 1):.1f}); "
+            f"using the nominal latency of {nominal_latency_s * 1e3:.0f} ms"
+        )
         return
-    i0 = int(np.argmax(lit))                               # first window with light
+    i0 = int(np.argmax(lit))  # first window with light
     i1 = i0
     while i1 + 1 < len(tot) and lit[i1 + 1]:
         i1 += 1
@@ -673,8 +725,10 @@ def align(res: RunResult, nominal_latency_s: float = NOMINAL_LATENCY_S, log=prin
     res.align_mode = "flash-edges"
     res.flash_measured = (onset, end)
     latency = res.run_start - res.t_send
-    log(f"alignment from the flash edges: run start = send + {latency*1e3:.0f} ms, "
-        f"flash lasted {end - onset:.3f} s (protocol {f1 - f0:.3f} s)")
+    log(
+        f"alignment from the flash edges: run start = send + {latency * 1e3:.0f} ms, "
+        f"flash lasted {end - onset:.3f} s (protocol {f1 - f0:.3f} s)"
+    )
     if abs((end - onset) - (f1 - f0)) > 0.15:
         log("WARNING: measured flash length differs from the protocol; check the alignment")
     if not (0.0 <= latency <= 0.5):
@@ -731,16 +785,26 @@ def analyse(res: RunResult, n_exp: int = 1, log=print) -> list[dict]:
         tau_fit = float("nan")
         if fit_decay is not None and phase in ("pre", "post") and w.bins.sum() >= 200:
             try:
-                fr = fit_decay(w.bins.astype(float), res.bin_s * 1e9, n_exp=n_exp,
-                               period_ns=period_ns)
+                fr = fit_decay(w.bins.astype(float), res.bin_s * 1e9, n_exp=n_exp, period_ns=period_ns)
                 if fr.success:
                     tau_fit = fr.tau_int_ns
             except Exception as exc:
                 log(f"fit failed on window {w.k}: {exc}")
-        rows.append(dict(k=w.k, win_id=w.win_id, t_start_s=t0 - res.run_start,
-                         t_end_s=t1 - res.run_start, phase=phase, total=int(w.bins.sum()),
-                         bg_per_bin=bg, tau_mean_ns=tau_mean, tau_fit_ns=tau_fit,
-                         lost=w.lost, overflow=w.overflow))
+        rows.append(
+            dict(
+                k=w.k,
+                win_id=w.win_id,
+                t_start_s=t0 - res.run_start,
+                t_end_s=t1 - res.run_start,
+                phase=phase,
+                total=int(w.bins.sum()),
+                bg_per_bin=bg,
+                tau_mean_ns=tau_mean,
+                tau_fit_ns=tau_fit,
+                lost=w.lost,
+                overflow=w.overflow,
+            )
+        )
     res.summary = rows
     n = {p: sum(r["phase"] == p for r in rows) for p in ("pre", "flash", "post", "edge", "outside")}
     log("windows: " + ", ".join(f"{k}={v}" for k, v in n.items()))
@@ -777,10 +841,15 @@ def save_run(res: RunResult, out_dir: Path, log=print) -> Path:
         wr = csv.DictWriter(fh, fieldnames=keys)
         wr.writeheader()
         wr.writerows(res.summary)
-    np.savez_compressed(out_dir / "felix_windows.npz", bins=res.bins_matrix(),
-                        t_start_s=np.array([r_["t_start_s"] for r_ in res.summary]),
-                        phase=np.array([r_["phase"] for r_ in res.summary]),
-                        bin_s=res.bin_s, left_s=res.left_s, window_s=res.window_s)
+    np.savez_compressed(
+        out_dir / "felix_windows.npz",
+        bins=res.bins_matrix(),
+        t_start_s=np.array([r_["t_start_s"] for r_ in res.summary]),
+        phase=np.array([r_["phase"] for r_ in res.summary]),
+        bin_s=res.bin_s,
+        left_s=res.left_s,
+        window_s=res.window_s,
+    )
     for phase in ("pre", "post"):
         dec = summed_decay(res, phase)
         with open(out_dir / f"decay_{phase}.csv", "w", newline="") as fh:
@@ -788,13 +857,21 @@ def save_run(res: RunResult, out_dir: Path, log=print) -> Path:
             wr.writerow(["t_ns", "counts"])
             for i, c in enumerate(dec):
                 wr.writerow([f"{(res.left_s + (i + 0.5) * res.bin_s) * 1e9:.4f}", int(c)])
-    meta = dict(protocol=res.protocol, cmd=res.cmd.strip(), window_s=res.window_s,
-                laser_hz=res.laser_hz, bin_s=res.bin_s, align_mode=res.align_mode,
-                latency_s=res.run_start - res.t_send,
-                flash_measured_s=[x - res.run_start for x in res.flash_measured],
-                rates_before=res.rates_before, ambit=dict(name=res.ambit_name, fw=res.ambit_fw),
-                felix=res.felix_desc, ambit_tags={k: int(len(v)) for k, v in res.ambit.items()},
-                saved=time.strftime("%Y-%m-%d %H:%M:%S"))
+    meta = dict(
+        protocol=res.protocol,
+        cmd=res.cmd.strip(),
+        window_s=res.window_s,
+        laser_hz=res.laser_hz,
+        bin_s=res.bin_s,
+        align_mode=res.align_mode,
+        latency_s=res.run_start - res.t_send,
+        flash_measured_s=[x - res.run_start for x in res.flash_measured],
+        rates_before=res.rates_before,
+        ambit=dict(name=res.ambit_name, fw=res.ambit_fw),
+        felix=res.felix_desc,
+        ambit_tags={k: int(len(v)) for k, v in res.ambit.items()},
+        saved=time.strftime("%Y-%m-%d %H:%M:%S"),
+    )
     (out_dir / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     log(f"saved to {out_dir}")
     return out_dir
@@ -815,8 +892,7 @@ def plot_run(res: RunResult, show: bool = True, save_to: Path | str | None = Non
     tau = np.array([x["tau_mean_ns"] for x in rows], float)
     tau_fit = np.array([x["tau_fit_ns"] for x in rows], float)
     phase = np.array([x["phase"] for x in rows])
-    colors = {"pre": "tab:blue", "post": "tab:green", "flash": "tab:red",
-              "edge": "tab:gray", "outside": "lightgray"}
+    colors = {"pre": "tab:blue", "post": "tab:green", "flash": "tab:red", "edge": "tab:gray", "outside": "lightgray"}
 
     fig, axes = plt.subplots(4, 1, figsize=(11, 11), sharex=False)
     for ax in axes[:3]:
@@ -826,8 +902,9 @@ def plot_run(res: RunResult, show: bool = True, save_to: Path | str | None = Non
     ax = axes[0]
     ax.plot(t_amb[:n], ratio, "o-", ms=3, color="tab:blue")
     ax.set_ylabel("AMBIT s_630 / r_630")
-    ax.set_title(f"{res.ambit_name}  |  alignment: {res.align_mode}, latency "
-                 f"{(res.run_start - res.t_send)*1e3:.0f} ms")
+    ax.set_title(
+        f"{res.ambit_name}  |  alignment: {res.align_mode}, latency {(res.run_start - res.t_send) * 1e3:.0f} ms"
+    )
     ax = axes[1]
     ax.bar(tw, tot, width=res.window_s * 0.9, color=[colors[p] for p in phase])
     ax.set_yscale("log")
@@ -891,8 +968,9 @@ def main(argv=None) -> int:
             rates = felix.count_rates(0.5)
             print("Felix input rates: " + ", ".join(f"ch{c}={r:,.0f}/s" for c, r in rates.items()))
             rej = felix.tdc_rejection(0.5)
-            print(f"Felix TDC drops {rej:.1%} of the SPAD events" if rej == rej else
-                  "Felix TDC rejection: not readable")
+            print(
+                f"Felix TDC drops {rej:.1%} of the SPAD events" if rej == rej else "Felix TDC rejection: not readable"
+            )
             warn = rejection_warning(rej, rates.get(SPAD_CH, 0))
             if warn:
                 problems.append("Felix: " + warn)
@@ -905,9 +983,17 @@ def main(argv=None) -> int:
         if args.check:
             return 0
         out = Path(args.out) if args.out else HERE / "runs" / time.strftime("%Y%m%d_%H%M%S")
-        res = run_gated(ambit, felix, DEFAULT_PROTOCOL, window_s=args.window, pre_s=args.pre,
-                        post_s=args.post, laser_hz=args.laser_hz, threshold_v=args.threshold,
-                        out_dir=out)
+        res = run_gated(
+            ambit,
+            felix,
+            DEFAULT_PROTOCOL,
+            window_s=args.window,
+            pre_s=args.pre,
+            post_s=args.post,
+            laser_hz=args.laser_hz,
+            threshold_v=args.threshold,
+            out_dir=out,
+        )
         plot_run(res, show=not args.no_plot, save_to=out / "summary.png")
         return 0
     except Exception as exc:

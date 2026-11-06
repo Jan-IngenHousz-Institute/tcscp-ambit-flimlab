@@ -5,6 +5,7 @@ TDC-Software's setup runs. It extracts the driver package, signs its catalogue (
 publisher" warning) and runs Microsoft's dpinst: Windows asks for administrator permission once,
 then a two-click wizard installs the WinUSB driver for the Felix (USB VID 0403, PID 6C68).
 """
+
 from __future__ import annotations
 
 import sys
@@ -12,14 +13,16 @@ from pathlib import Path
 
 INSTALLER_NAME = "Felix_WinUSB_driver.exe"
 DOWNLOAD_URL = "https://tediel.com/wp-content/Resources/Felix/Felix_WinUSB_driver.exe"
-ERROR_CANCELLED = 1223                  # the UAC prompt was refused
+ERROR_CANCELLED = 1223  # the UAC prompt was refused
 
 
 def installer_path() -> Path | None:
     """The bundled installer: ``_internal/driver/`` in the frozen app, ``docs/`` in a source checkout."""
     if getattr(sys, "frozen", False):
-        candidates = [Path(getattr(sys, "_MEIPASS", "")) / "driver" / INSTALLER_NAME,
-                      Path(sys.executable).resolve().parent / INSTALLER_NAME]
+        candidates = [
+            Path(getattr(sys, "_MEIPASS", "")) / "driver" / INSTALLER_NAME,
+            Path(sys.executable).resolve().parent / INSTALLER_NAME,
+        ]
     else:
         candidates = [Path(__file__).resolve().parents[3] / "docs" / INSTALLER_NAME]
     return next((p for p in candidates if p.is_file()), None)
@@ -36,20 +39,38 @@ def run_installer(path: Path) -> int:
     import ctypes.wintypes as wt
 
     class ShellExecuteInfo(ctypes.Structure):
-        _fields_ = [("cbSize", wt.DWORD), ("fMask", wt.ULONG), ("hwnd", wt.HWND), ("lpVerb", wt.LPCWSTR),
-                    ("lpFile", wt.LPCWSTR), ("lpParameters", wt.LPCWSTR), ("lpDirectory", wt.LPCWSTR),
-                    ("nShow", ctypes.c_int), ("hInstApp", wt.HINSTANCE), ("lpIDList", ctypes.c_void_p),
-                    ("lpClass", wt.LPCWSTR), ("hkeyClass", wt.HKEY), ("dwHotKey", wt.DWORD),
-                    ("hIcon", wt.HANDLE), ("hProcess", wt.HANDLE)]
+        _fields_ = [
+            ("cbSize", wt.DWORD),
+            ("fMask", wt.ULONG),
+            ("hwnd", wt.HWND),
+            ("lpVerb", wt.LPCWSTR),
+            ("lpFile", wt.LPCWSTR),
+            ("lpParameters", wt.LPCWSTR),
+            ("lpDirectory", wt.LPCWSTR),
+            ("nShow", ctypes.c_int),
+            ("hInstApp", wt.HINSTANCE),
+            ("lpIDList", ctypes.c_void_p),
+            ("lpClass", wt.LPCWSTR),
+            ("hkeyClass", wt.HKEY),
+            ("dwHotKey", wt.DWORD),
+            ("hIcon", wt.HANDLE),
+            ("hProcess", wt.HANDLE),
+        ]
 
     shell32 = ctypes.WinDLL("shell32", use_last_error=True)
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.WaitForSingleObject.argtypes = [wt.HANDLE, wt.DWORD]
     kernel32.GetExitCodeProcess.argtypes = [wt.HANDLE, ctypes.POINTER(wt.DWORD)]
     kernel32.CloseHandle.argtypes = [wt.HANDLE]
-    info = ShellExecuteInfo(cbSize=ctypes.sizeof(ShellExecuteInfo), fMask=0x40,       # SEE_MASK_NOCLOSEPROCESS
-                            lpVerb="runas", lpFile=str(path), lpParameters="",
-                            lpDirectory=str(path.parent), nShow=1)
+    info = ShellExecuteInfo(
+        cbSize=ctypes.sizeof(ShellExecuteInfo),
+        fMask=0x40,  # SEE_MASK_NOCLOSEPROCESS
+        lpVerb="runas",
+        lpFile=str(path),
+        lpParameters="",
+        lpDirectory=str(path.parent),
+        nShow=1,
+    )
     if not shell32.ShellExecuteExW(ctypes.byref(info)):
         err = ctypes.get_last_error()
         if err == ERROR_CANCELLED:

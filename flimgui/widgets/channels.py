@@ -3,17 +3,25 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtWidgets import (QCheckBox, QDoubleSpinBox, QGridLayout, QGroupBox, QLabel,
-                               QPushButton, QSlider, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QDoubleSpinBox,
+    QGridLayout,
+    QGroupBox,
+    QLabel,
+    QPushButton,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class ChannelRow(QWidget):
-    threshold_changed = Signal(int, float)   # channel, volts
-    delay_changed = Signal(int, float)       # channel, nanoseconds
+    threshold_changed = Signal(int, float)  # channel, volts
+    delay_changed = Signal(int, float)  # channel, nanoseconds
     auto_requested = Signal(int)
 
-    def __init__(self, ch: int, name: str, thr_range: tuple[float, float],
-                 delay_range_ns: tuple[float, float]):
+    def __init__(self, ch: int, name: str, thr_range: tuple[float, float], delay_range_ns: tuple[float, float]):
         super().__init__()
         self.ch = ch
         self._thr_range = thr_range
@@ -51,8 +59,9 @@ class ChannelRow(QWidget):
         grid.addWidget(self.dly_slider, 2, 2)
 
         self.auto_btn = QPushButton("Auto threshold")
-        self.auto_btn.setToolTip("Let the Felix scan the input and put the threshold in the middle "
-                                 "of the pulse amplitude.")
+        self.auto_btn.setToolTip(
+            "Let the Felix scan the input and put the threshold in the middle of the pulse amplitude."
+        )
         grid.addWidget(self.auto_btn, 3, 1, 1, 2)
         grid.setColumnStretch(2, 1)
 
@@ -121,14 +130,17 @@ class ChannelPanel(QGroupBox):
     delay_changed = Signal(int, float)
     auto_requested = Signal(int)
 
-    def __init__(self, names: list[str], thr_ranges: dict[int, tuple[float, float]],
-                 delay_ranges_ns: dict[int, tuple[float, float]]):
+    def __init__(
+        self,
+        names: list[str],
+        thr_ranges: dict[int, tuple[float, float]],
+        delay_ranges_ns: dict[int, tuple[float, float]],
+    ):
         super().__init__("Channel configuration")
         self.rows: dict[int, ChannelRow] = {}
         lay = QVBoxLayout(self)
         for ch, name in enumerate(names):
-            row = ChannelRow(ch, name, thr_ranges.get(ch, (0.0, 2.5)),
-                             delay_ranges_ns.get(ch, (-614.0, 614.0)))
+            row = ChannelRow(ch, name, thr_ranges.get(ch, (0.0, 2.5)), delay_ranges_ns.get(ch, (-614.0, 614.0)))
             row.threshold_changed.connect(self.threshold_changed)
             row.delay_changed.connect(self.delay_changed)
             row.auto_requested.connect(self.auto_requested)

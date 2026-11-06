@@ -22,20 +22,20 @@ MAX_FIT_BINS = 2048
 @dataclass
 class FitResult:
     n_exp: int
-    amps: np.ndarray                 # amplitude of each component at the pulse (counts/bin, data grid)
+    amps: np.ndarray  # amplitude of each component at the pulse (counts/bin, data grid)
     taus_ns: np.ndarray
-    bg: float                        # flat background, counts per data bin
-    shift_ns: float                  # IRF shift (reconvolution only)
+    bg: float  # flat background, counts per data bin
+    shift_ns: float  # IRF shift (reconvolution only)
     chi2r: float
-    model: np.ndarray                # model on the data grid (nan where not fitted)
-    mask: np.ndarray                 # data bins covered by the fit
-    tau_amp_ns: float                # amplitude-weighted mean lifetime
-    tau_int_ns: float                # intensity-weighted mean lifetime
-    mode: str                        # "reconv", "tail" or "none"
+    model: np.ndarray  # model on the data grid (nan where not fitted)
+    mask: np.ndarray  # data bins covered by the fit
+    tau_amp_ns: float  # amplitude-weighted mean lifetime
+    tau_int_ns: float  # intensity-weighted mean lifetime
+    mode: str  # "reconv", "tail" or "none"
     success: bool
     message: str = ""
     params: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    resid: np.ndarray = field(default_factory=lambda: np.zeros(0))       # weighted residuals (fit grid)
+    resid: np.ndarray = field(default_factory=lambda: np.zeros(0))  # weighted residuals (fit grid)
     resid_t_ns: np.ndarray = field(default_factory=lambda: np.zeros(0))  # their time axis
     rebin: int = 1
 
@@ -51,7 +51,7 @@ def average_lifetimes(amps, taus) -> tuple[float, float]:
     sa = amps.sum()
     sat = (amps * taus).sum()
     tau_amp = sat / sa if sa > 0 else float("nan")
-    tau_int = (amps * taus ** 2).sum() / sat if sat > 0 else float("nan")
+    tau_int = (amps * taus**2).sum() / sat if sat > 0 else float("nan")
     return float(tau_amp), float(tau_int)
 
 
@@ -160,7 +160,7 @@ def fit_decay(
         npar = 2 + 2 * n_exp
 
         def unpack(p):
-            return p[0], p[1], p[2:2 + n_exp], p[2 + n_exp:]
+            return p[0], p[1], p[2 : 2 + n_exp], p[2 + n_exp :]
 
         def resid(p):
             bg, sh, a, tau = unpack(p)
@@ -173,8 +173,7 @@ def fit_decay(
             p0 = np.concatenate([[bg0, 0.0], amps0, taus0])
         shift_max = max(5 * bw, 0.5)
         lo = np.concatenate([[0.0, -shift_max], np.zeros(n_exp), np.full(n_exp, 0.3 * bw)])
-        hi = np.concatenate([[np.inf, shift_max], np.full(n_exp, np.inf),
-                             np.full(n_exp, 10 * model.period_ns)])
+        hi = np.concatenate([[np.inf, shift_max], np.full(n_exp, np.inf), np.full(n_exp, 10 * model.period_ns)])
         p0 = np.clip(p0, lo + 1e-12, np.where(np.isinf(hi), np.inf, hi - 1e-12))
         try:
             sol = least_squares(resid, p0, bounds=(lo, hi), x_scale="jac", max_nfev=max_nfev)
@@ -196,7 +195,7 @@ def fit_decay(
         npar = 1 + 2 * n_exp
 
         def unpack(p):
-            return p[0], p[1:1 + n_exp], p[1 + n_exp:]
+            return p[0], p[1 : 1 + n_exp], p[1 + n_exp :]
 
         def tail_model(p, tt_):
             bg, a, tau = unpack(p)
@@ -222,10 +221,10 @@ def fit_decay(
         sh = 0.0
         m_c = np.full(n, np.nan)
         m_c[mask_c] = tail_model(sol.x, tt)
-        amps_peak = a * np.exp((t[start] - t[peak]) / tau)   # referred back to the peak
+        amps_peak = a * np.exp((t[start] - t[peak]) / tau)  # referred back to the peak
 
     dof = max(int(mask_c.sum()) - npar, 1)
-    chi2r = float(np.sum(sol.fun ** 2) / dof)
+    chi2r = float(np.sum(sol.fun**2) / dof)
     tau_amp, tau_int = average_lifetimes(amps_peak, tau)
 
     # back to the original grid: counts per fine bin
@@ -234,10 +233,22 @@ def fit_decay(
     mask_f = np.zeros(n0, bool)
     mask_f[: n * factor] = np.repeat(mask_c, factor)
     return FitResult(
-        n_exp=n_exp, amps=amps_peak / factor, taus_ns=tau, bg=float(bg) / factor,
-        shift_ns=float(sh), chi2r=chi2r, model=model_f, mask=mask_f,
-        tau_amp_ns=tau_amp, tau_int_ns=tau_int, mode=mode, success=bool(sol.success),
-        message=str(sol.message), params=sol.x, resid=sol.fun, resid_t_ns=t[mask_c],
+        n_exp=n_exp,
+        amps=amps_peak / factor,
+        taus_ns=tau,
+        bg=float(bg) / factor,
+        shift_ns=float(sh),
+        chi2r=chi2r,
+        model=model_f,
+        mask=mask_f,
+        tau_amp_ns=tau_amp,
+        tau_int_ns=tau_int,
+        mode=mode,
+        success=bool(sol.success),
+        message=str(sol.message),
+        params=sol.x,
+        resid=sol.fun,
+        resid_t_ns=t[mask_c],
         rebin=factor,
     )
 
@@ -245,8 +256,17 @@ def fit_decay(
 def _empty(n_exp: int, counts: np.ndarray, msg: str) -> FitResult:
     nan = float("nan")
     return FitResult(
-        n_exp=n_exp, amps=np.full(n_exp, nan), taus_ns=np.full(n_exp, nan), bg=nan,
-        shift_ns=nan, chi2r=nan, model=np.full(counts.size, np.nan),
-        mask=np.zeros(counts.size, bool), tau_amp_ns=nan, tau_int_ns=nan, mode="none",
-        success=False, message=msg,
+        n_exp=n_exp,
+        amps=np.full(n_exp, nan),
+        taus_ns=np.full(n_exp, nan),
+        bg=nan,
+        shift_ns=nan,
+        chi2r=nan,
+        model=np.full(counts.size, np.nan),
+        mask=np.zeros(counts.size, bool),
+        tau_amp_ns=nan,
+        tau_int_ns=nan,
+        mode="none",
+        success=False,
+        message=msg,
     )

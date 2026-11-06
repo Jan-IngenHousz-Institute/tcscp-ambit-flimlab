@@ -1,13 +1,14 @@
-"""The release workflow's version choice (packaging/stamp_version.py).
+"""Writing the release version into the build (packaging/stamp_version.py).
 
-Run with:  python -m pytest tests
+Run with:  uv run pytest
 """
 
 from __future__ import annotations
 
 import importlib.util
-import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("stamp_version", ROOT / "packaging" / "stamp_version.py")
@@ -15,28 +16,23 @@ sv = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sv)
 
 
-def test_next_patch_after_latest_tag():
-    assert sv.next_version("v0.1.4", (0, 1, 4)) == (0, 1, 5)
+@pytest.fixture
+def init(tmp_path, monkeypatch):
+    path = tmp_path / "__init__.py"
+    path.write_bytes(b'\xef\xbb\xbf"""doc"""\n\n__version__ = "0.0.0"\n# tail\n')
+    monkeypatch.setattr(sv, "INIT", path)
+    return path
 
 
-def test_source_version_wins_when_raised_by_hand():
-    assert sv.next_version("v0.1.4", (0, 2, 0)) == (0, 2, 0)
+@pytest.mark.parametrize("version", ["0.2.0", "1.0.0", "0.1.7+pr.6"])
+def test_stamp_keeps_bom_and_rest_of_file(init, capsys, version):
+    assert sv.main(["stamp_version.py", version]) == 0
+    assert capsys.readouterr().out.strip() == version
+    assert init.read_bytes() == b'\xef\xbb\xbf"""doc"""\n\n__version__ = "' + version.encode() + b'"\n# tail\n'
 
 
-def test_no_tag_takes_source_version():
-    assert sv.next_version("", (0, 1, 4)) == (0, 1, 4)
-
-
-def test_stamp_keeps_bom_and_rest_of_file(tmp_path, monkeypatch, capsys):
-    init = tmp_path / "__init__.py"
-    init.write_bytes(b'\xef\xbb\xbf"""doc"""\n\n__version__ = "0.1.4"\n# tail\n')
-    monkeypatch.setattr(sv, "INIT", init)
-    assert sv.main(["stamp_version.py", "v0.1.4"]) == 0
-    assert capsys.readouterr().out.strip() == "0.1.5"
-    assert init.read_bytes() == b'\xef\xbb\xbf"""doc"""\n\n__version__ = "0.1.5"\n# tail\n'
-
-
-if __name__ == "__main__":
-    import pytest
-
-    sys.exit(pytest.main([__file__, "-q"]))
+@pytest.mark.parametrize("bad", [[], ["v0.2.0"], ["0.2"], ["0.2.0", "extra"]])
+def test_refuses_anything_but_a_version(init, bad):
+    with pytest.raises(SystemExit):
+        sv.main(["stamp_version.py", *bad])
+    assert b'__version__ = "0.0.0"' in init.read_bytes()

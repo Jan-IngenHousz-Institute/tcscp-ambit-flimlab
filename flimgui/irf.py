@@ -16,7 +16,7 @@ from .settings import IRF_DIR
 @dataclass
 class IRF:
     name: str
-    bins: np.ndarray            # counts per bin
+    bins: np.ndarray  # counts per bin
     left_ns: float
     bin_ns: float
     created: float = field(default_factory=time.time)
@@ -42,8 +42,7 @@ class IRF:
 
         Returns (irf_counts, exact) where exact is True when no resampling was needed.
         """
-        same = (abs(left_ns - self.left_ns) < 1e-9 and abs(bin_ns - self.bin_ns) < 1e-6
-                and n == self.n)
+        same = abs(left_ns - self.left_ns) < 1e-9 and abs(bin_ns - self.bin_ns) < 1e-6 and n == self.n
         if same:
             return self.bins.astype(float), True
         centers = left_ns + (np.arange(n) + 0.5) * bin_ns
@@ -64,7 +63,7 @@ class IRF:
         }
 
     @classmethod
-    def from_json(cls, d: dict) -> "IRF":
+    def from_json(cls, d: dict) -> IRF:
         return cls(
             name=d["name"],
             bins=np.asarray(d["bins"], dtype=np.int64),

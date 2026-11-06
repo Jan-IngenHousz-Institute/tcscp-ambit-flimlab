@@ -1,4 +1,5 @@
 """Entry point: python -m phi2gui [--open RUN_FOLDER] [--settings FILE] [--smoke-test FILE]"""
+
 from __future__ import annotations
 
 import argparse
@@ -14,7 +15,7 @@ def smoke_test(out: Path) -> int:
     import os
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    if sys.platform != "darwin":                # TEDIEL ships pylibtdc for Windows and Linux only
+    if sys.platform != "darwin":  # TEDIEL ships pylibtdc for Windows and Linux only
         import pylibtdc  # noqa: F401  (the Felix bindings load lazily in a real run)
     from PySide6.QtWidgets import QApplication
 

@@ -3,12 +3,11 @@ rem Build the standalone phi2 GUI locally and zip it:
 rem     dist\phi2gui\phi2gui.exe            (plus _internal\, README.txt)
 rem     dist\phi2gui-v<version>-win64.zip   (version = phi2gui.__version__)
 rem
-rem Releases do not need this: .github\workflows\gui-release.yml builds and publishes one on every
-rem merge to main. This is for trying a build on your own PC.
+rem Releases do not need this: .github\workflows\gui-release.yml builds and publishes Windows, Linux
+rem and macOS zips on every merge to main. This is for trying a Windows build on your own PC.
 rem
 rem Needs uv (https://docs.astral.sh/uv/, e.g.  winget install astral-sh.uv). uv brings Python 3.13
-rem and every package from uv.lock into .venv; packaging\fetch_pylibtdc.py puts TEDIEL's pylibtdc
-rem (free download at https://tediel.com/resources) into wheelhouse\ first.
+rem and every package from uv.lock into .venv, TEDIEL's pylibtdc included.
 
 setlocal
 set "PYTHONPATH="
@@ -22,7 +21,6 @@ if not defined UV (
     goto :fail
 )
 
-"%UV%" run --no-project packaging\fetch_pylibtdc.py || goto :fail
 "%UV%" sync --locked --group build || goto :fail
 set "VPY=%~dp0.venv\Scripts\python.exe"
 "%VPY%" -c "import sys; print(sys.base_prefix)" > "%TEMP%\phi2gui_base.txt" || goto :fail

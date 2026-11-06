@@ -18,7 +18,7 @@ dependencies = [
 [dependency-groups]
 dev = ["pytest>=8", "nbstripout>=0.7", "ipykernel>=6"]
 build = ["pyinstaller>=6.10"]
-# TEDIEL's Felix bindings, not on PyPI: `uv run --no-project packaging/fetch_pylibtdc.py` first
+# TEDIEL's Felix bindings: not on PyPI, so the wheels are assets of this repo's deps-pylibtdc-* release
 felix = [
     "pylibtdc ; (sys_platform == 'win32' and platform_machine == 'AMD64') or (sys_platform == 'linux' and platform_machine == 'x86_64')",
 ]
@@ -29,8 +29,8 @@ default-groups = ["dev", "felix"]
 
 [tool.uv.sources]
 pylibtdc = [
-    { path = "wheelhouse/pylibtdc-1.18.2.1-cp313-cp313-win_amd64.whl", marker = "sys_platform == 'win32'" },
-    { path = "wheelhouse/pylibtdc-1.18.2.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", marker = "sys_platform == 'linux'" },
+    { url = "https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab/releases/download/deps-pylibtdc-2026-09-01/pylibtdc-1.18.2.1-cp313-cp313-win_amd64.whl", marker = "sys_platform == 'win32'" },
+    { url = "https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab/releases/download/deps-pylibtdc-2026-09-01/pylibtdc-1.18.2.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", marker = "sys_platform == 'linux'" },
 ]
 
 [tool.pytest.ini_options]

@@ -1,26 +1,50 @@
-phi2 GUI  -  AMBIT + Felix TCSPC phi2 measurement with openJII upload
-=====================================================================
+phi2 GUI: AMBIT + Felix TCSPC phi2 measurement with openJII upload
+===================================================================
 
-Run:      double-click phi2gui.exe  (no Python needed)
-          phi2gui.exe --open <run folder>   shows a saved run, no instruments needed
-          If Windows SmartScreen warns, click "More info" > "Run anyway" (build is not code-signed).
+This folder holds everything the app needs. You install nothing else, not even Python.
+Keep the folder together: the program needs the files beside it.
 
-Before the first measurement on a new PC:
-  1. Plug in the Felix and the AMBIT (USB-serial, 115200 8N1), then start phi2gui.exe.
-  2. If Windows has no driver for the Felix yet, the app offers to install TEDIEL's WinUSB
-     driver: allow the administrator prompt, then Next and Finish in the short wizard.
-     (Manual alternative: Felix_WinUSB_driver.exe from https://tediel.com/resources.)
-  3. Close TDC-Software: only one program can open the Felix.
+Windows 10 or 11, 64-bit
+  Start:     double-click phi2gui.exe
+  Warning:   the build is not code-signed. If SmartScreen warns, click "More info", then "Run anyway".
+  Felix:     if Windows has no driver for the Felix yet, the app offers to install TEDIEL's WinUSB
+             driver. Allow the administrator prompt, then click Next and Finish in the short wizard.
+             Felix_WinUSB_driver.exe from https://tediel.com/resources does the same by hand.
+  Output:    runs\<timestamp>_gui\ next to phi2gui.exe
+  Log:       phi2gui.log next to phi2gui.exe
+  Settings:  %APPDATA%\phi2gui\phi2gui.json, with your openJII API key and the last used ports
 
-IRF:      the instrument response for the lifetime fits is shipped (261104 black plastic, 50 %);
-          "Add IRF file..." takes a TDC-Software histogram export (CSV) and remembers it.
-Rule:     the Felix window must be at most half of the shortest pause (the app checks before a run).
-Output:   runs\<timestamp>_gui\ next to phi2gui.exe (raw.png shows the raw data of every run)
-Settings: %APPDATA%\phi2gui\phi2gui.json  (openJII API key, last used ports)
-Log:      phi2gui.log next to phi2gui.exe  (send it along when reporting a problem)
+Linux x64, any distribution with glibc 2.35 or newer
+  Start:     ./phi2gui in this folder
+  Felix:     a normal user needs permission for the USB device. As root, put this line in
+             /etc/udev/rules.d/70-felix.rules, then unplug and replug the Felix:
+               SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6c68", TAG+="uaccess"
+             For the AMBIT's serial port, add yourself to the dialout group.
+             Nobody has measured with the Linux build yet. Report what you find.
+  Output:    runs/<timestamp>_gui/ next to phi2gui
+  Log:       phi2gui.log next to phi2gui
+  Settings:  ~/.config/phi2gui/phi2gui.json
 
-Keep this folder together: phi2gui.exe needs the _internal folder beside it.
-This package bundles TEDIEL's pylibtdc library for the Felix TDC (free download at
-https://tediel.com/resources, Python API 2026.09.01); it only works with a licensed Felix.
+macOS, Apple silicon
+  Start:     move phi2gui.app to Applications and double-click it. The app is not notarized, so
+             the first start needs a right-click on it, then Open. If macOS says the app is
+             damaged, run this once in Terminal:  xattr -dr com.apple.quarantine /Applications/phi2gui.app
+  Felix:     TEDIEL ships no macOS library, so a Mac cannot drive the Felix. It opens saved runs,
+             shows their results and uploads them to openJII.
+  Output:    ~/Documents/phi2gui/runs/
+  Log:       ~/Library/Logs/phi2gui.log
+  Settings:  ~/Library/Application Support/phi2gui/phi2gui.json
+
+Every computer
+  "Open saved run..." shows a run folder again without instruments, on any of the three.
+  Close TDC-Software before measuring. Only one program can open the Felix at a time.
+  The lifetime fits use the shipped instrument response, 261104 black plastic at 50 %. "Add IRF
+  file..." takes a TDC-Software histogram export in CSV and remembers it.
+  The Felix window must be at most half of the shortest pause. The app checks this before a run.
+  Each run folder has raw.png with the raw data, also when the fits fail.
+  Send phi2gui.log along when you report a problem.
+
+The app bundles TEDIEL's pylibtdc library, Python API 2026.09.01, which is a free download at
+https://tediel.com/resources. It only works with a licensed Felix.
 
 Source and releases: https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab

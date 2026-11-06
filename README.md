@@ -141,3 +141,8 @@ Type 2 lines do not fire the 730 nm reference LED, so only the 625 nm measuring 
 - `run.json`: protocol, alignment mode and latency, count rates, instrument identities
 - `summary.png`: the four-panel figure
 
+
+## Developing
+
+Changing the code: [docs/](docs/README.md) explains how the pieces fit, the openJII upload and the
+release pipeline. Agents start at [AGENTS.md](AGENTS.md).

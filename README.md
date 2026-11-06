@@ -40,8 +40,22 @@ The SPAD detector for fluorescence lifetime saturates during the actinic segment
 
 ## Requirements
 
-Python 3.13 with `pyserial`, `numpy`, `matplotlib`, `scipy` (for the tail fit through
-`flimgui/fitting.py`) and `pylibtdc` (cp313 wheel from `docs/pylibtdc-2026-09-01.zip`).
+[uv](https://docs.astral.sh/uv/) (`winget install astral-sh.uv` on Windows) manages Python 3.13
+and every package. `pyproject.toml` lists them and `uv.lock` pins them. In the repository folder:
+
+```
+uv run --no-project packaging/fetch_pylibtdc.py   # once: TEDIEL's pylibtdc into wheelhouse/
+uv sync                                            # Python 3.13 and all packages into .venv/
+uv run nbstripout --install                        # once: strip notebook outputs on commit
+```
+
+`pylibtdc` (the Felix bindings) is not on PyPI. The script takes TEDIEL's free
+`pylibtdc-2026-09-01.zip` from `docs/`, or downloads it from tediel.com, checks its SHA-256 and
+extracts the Python 3.13 wheels for Windows and Linux. Then run anything with `uv run`, such as
+`uv run pytest`, `uv run python scripts/ambit-gate/ambit_gate.py`, or pick `.venv` as the notebook
+kernel. Without the Felix (tests, analysis, macOS): `uv sync --frozen --no-group felix`. A new
+package goes in with `uv add <package>`, which updates `uv.lock`; commit both files.
+
 Close TDC-Software first: only one program can open the Felix.
 
 ## phi2 GUI
@@ -63,9 +77,11 @@ The measurement of notebook 4 with its results and the upload to openJII, as a d
   `v<major>.<minor>.<patch+1>`. To jump to a new minor or major version, raise `__version__` in
   `scripts/ambit-gate/phi2gui/__init__.py` in the PR; otherwise leave it alone. A pull request
   keeps its exe as a workflow artifact for testing. `build_phi2gui.bat` still builds one locally.
-- **From source**: clone or download this repository, install the requirements above, then
-  double-click `phi2gui.bat` in the repository folder (or `python -m phi2gui` from
-  `scripts/ambit-gate`). The GitHub release's "Source code" zip is this, not the standalone build.
+- **From source**: clone or download this repository and double-click `phi2gui.bat` in the
+  repository folder. With uv installed it sets up `.venv` the first time (see Requirements);
+  without uv it falls back to an installed Python 3.13. From a prompt:
+  `uv run python -m phi2gui` in `scripts/ambit-gate`. The GitHub release's "Source code" zip is
+  this, not the standalone build.
 
 Uploading to openJII needs a personal API key (web app: Platform > Account > API keys) and an
 experiment you are a member of. A run is **one row** of an *upload table* of the experiment

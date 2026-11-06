@@ -371,8 +371,8 @@ class FelixLink:
         try:
             import pylibtdc as tdc
         except ImportError as exc:
-            raise RuntimeError("pylibtdc is not installed in this Python (pip install the "
-                               "cp313 wheel from docs/pylibtdc-2026-09-01.zip)") from exc
+            raise RuntimeError("pylibtdc is not installed in this Python: in the repository folder run "
+                               "'uv run --no-project packaging/fetch_pylibtdc.py' then 'uv sync'") from exc
         self.tdc = tdc
         backend = tdc.TDCBackend()          # never pass a callback: it aborts the process
         devices = backend.getDevices()

@@ -20,7 +20,7 @@ The `paths` list at the top of the workflow defines "touches the GUI". It covers
 | --- | --- | --- |
 | `phi2gui-v<version>-win64.zip` | `windows-latest` | Windows 10 and 11, 64-bit |
 | `phi2gui-v<version>-linux-x64.zip` | `ubuntu-22.04` | Linux x64 with glibc 2.35 or newer |
-| `phi2gui-v<version>-macos-arm64.zip` | `macos-14` | macOS on Apple silicon |
+| `phi2gui-v<version>-macos-arm64.zip` | `macos-15` | macOS on Apple silicon |
 
 The Linux build runs on the oldest supported Ubuntu, because a binary built against an older glibc
 runs on newer ones and not the other way round.

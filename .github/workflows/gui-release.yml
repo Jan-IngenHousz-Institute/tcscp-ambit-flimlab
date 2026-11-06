@@ -90,7 +90,7 @@ jobs:
             platform: linux-x64
             bundle: dist/phi2gui
             executable: dist/phi2gui/phi2gui
-          - os: macos-14
+          - os: macos-15
             platform: macos-arm64
             bundle: dist/phi2gui.app
             executable: dist/phi2gui.app/Contents/MacOS/phi2gui
@@ -205,17 +205,22 @@ jobs:
         run: |
           set -euo pipefail
           cp packaging/README-dist.txt dist/phi2gui/README.txt
-          mkdir -p out
-          (cd dist && zip -q -r -y "../out/$ZIP" phi2gui)
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cd dist
+          zip -q -r -y "$GITHUB_WORKSPACE/out/$ZIP" phi2gui
+          ls -la "$GITHUB_WORKSPACE/out"
+          test -s "$GITHUB_WORKSPACE/out/$ZIP"
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
           set -euo pipefail
-          mkdir -p pkg/phi2gui out
+          mkdir -p pkg/phi2gui "$GITHUB_WORKSPACE/out"
           cp -R dist/phi2gui.app pkg/phi2gui/
           cp packaging/README-dist.txt pkg/phi2gui/README.txt
-          ditto -c -k --keepParent pkg/phi2gui "out/$ZIP"
+          ditto -c -k --keepParent pkg/phi2gui "$GITHUB_WORKSPACE/out/$ZIP"
+          ls -la "$GITHUB_WORKSPACE/out"
+          test -s "$GITHUB_WORKSPACE/out/$ZIP"
 
       - uses: actions/upload-artifact@v6
         with:

@@ -13,3 +13,8 @@ scripts/felix_decay_hist.py
 # PyInstaller output (build_phi2gui.bat)
 build/
 dist/
+
+# uv
+.venv/
+wheelhouse/
+docs/pylibtdc-*.part

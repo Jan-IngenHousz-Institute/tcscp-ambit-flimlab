@@ -80,9 +80,12 @@ a.binaries += [(name, str(path), "BINARY") for name, path in _newest.items()]
 import site
 import sys
 
-_roots = [Path(sys.prefix), *map(Path, site.getsitepackages()), Path(site.getusersitepackages()), SRC, ROOT]
+# In a virtual environment (uv's .venv) sys.prefix is the venv and the interpreter's own DLLs
+# (python313.dll, DLLs\*.pyd) sit under sys.base_prefix, so both count as this Python.
+_prefixes = list(dict.fromkeys([Path(sys.prefix), Path(sys.base_prefix)]))
+_roots = [*_prefixes, *map(Path, site.getsitepackages()), Path(site.getusersitepackages()), SRC, ROOT]
 _roots = [r.resolve() for r in _roots if r.exists()]
-_python_dlls = {p.name.lower(): p for p in [*Path(sys.prefix).glob("*.dll"), *(Path(sys.prefix) / "DLLs").glob("*.dll")]}
+_python_dlls = {p.name.lower(): p for pre in _prefixes for p in [*pre.glob("*.dll"), *(pre / "DLLs").glob("*.dll")]}
 
 
 def _foreign(src: str) -> bool:

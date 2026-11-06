@@ -73,6 +73,21 @@ the first run with that table name (from this GUI, or any upload under that name
 everyone's uploads append to it. Tables made by GUI versions up to 0.1.2 (one row per AMBIT sample
 and per Felix window) cannot take the new rows: the GUI switches to the new default name once.
 
+"Felix histograms" sets how the Felix windows go into the row:
+
+| Choice | Bins | Row size (5 s run) |
+| --- | --- | --- |
+| 47 ps bins (default) | 266 per window, 20 raw bins summed | ~0.8 MB |
+| full resolution | every raw 2.34 ps bin, ~5300 per window | ~13 MB |
+| none | results and AMBIT trace only | ~20 kB |
+
+`felix_windows.rebin` (20 or 1) and `felix_windows.bin_ps` say which one a row holds. openJII stores
+a full-resolution row whole: a 13 MB run uploaded to openJII dev came back from SQL with every
+count. Its Data page cannot list a table holding such a row yet ("This page holds more data than one
+read can return"), so send full-resolution runs to a table of their own (e.g.
+`ambit_tcspc_runs_full`) and read them with SQL, a notebook or an export. A full-resolution row
+above 16 MiB (a run much longer than 5 s) goes up with 47 ps bins instead, and the log says so.
+
 
 
 ## Use

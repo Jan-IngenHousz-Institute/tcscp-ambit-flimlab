@@ -277,13 +277,13 @@ jobs:
           sha256sum phi2gui-*.zip > SHA256SUMS
           cat SHA256SUMS
           cat > ../notes.md <<EOF
-          Download the zip for your computer, extract all of it, and see README.txt inside. Nothing else needs installing.
+          Download the zip for your computer, extract all of it and read README.txt inside. Each zip holds everything the app needs, so you install nothing else.
 
           | Computer | Zip | Felix |
           | --- | --- | --- |
-          | Windows 10 or 11, 64-bit | \`phi2gui-v${VERSION}-win64.zip\` | Yes, driver installer included |
-          | Linux x64, glibc 2.35 or newer | \`phi2gui-v${VERSION}-linux-x64.zip\` | Bindings included, untested on the set-up |
-          | macOS, Apple silicon | \`phi2gui-v${VERSION}-macos-arm64.zip\` | No: TEDIEL ships no macOS library. Opens and uploads saved runs |
+          | Windows 10 or 11, 64-bit | \`phi2gui-v${VERSION}-win64.zip\` | Yes. The app offers to install the Felix driver. |
+          | Linux x64, glibc 2.35 or newer | \`phi2gui-v${VERSION}-linux-x64.zip\` | Yes, after the udev rule in README.txt. Nobody has measured with it yet. |
+          | macOS, Apple silicon | \`phi2gui-v${VERSION}-macos-arm64.zip\` | No. TEDIEL ships no macOS library, so a Mac opens and uploads saved runs. |
 
           EOF
 

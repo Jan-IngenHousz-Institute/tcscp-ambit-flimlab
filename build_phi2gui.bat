@@ -14,6 +14,11 @@ set "PYTHONPATH="
 set "PYTHONHOME="
 cd /d "%~dp0"
 
+rem A PATH of Windows and Python 3.13 only. PyInstaller resolves the DLLs a binary imports through
+rem PATH, and from an Anaconda prompt it bundled conda's ICU over the one Windows provides for Qt
+rem (v0.1.3 did not start on any PC). packaging\phi2gui.spec drops such foreign DLLs as well.
+set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\WindowsPowerShell\v1.0;C:\Python313;C:\Python313\Scripts;%LOCALAPPDATA%\Programs\Python\Launcher"
+
 set "PY=py -3.13"
 where py >nul 2>nul || set "PY=C:\Python313\python.exe"
 

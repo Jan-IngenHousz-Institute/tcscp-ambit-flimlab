@@ -4,8 +4,12 @@ The row (``run_row``) holds the run's metadata (protocol, instruments, note), th
 (``ambit_pause.run_summary``), the fit numbers of the reference decay and the pauses, and the raw
 traces as nested arrays: ``ambit_points`` (one array per AMBIT column: t_s, s_630, r_630, ratio,
 actinic, line, role) and ``felix_windows`` (t_start_s and the counts of every Felix histogram
-window, rebinned to 47 ps, ``REBIN`` x 2.34 ps: 266 bins per 5 ms window, ~1.5 MB of JSON for a
-5 s run; optional). The platform keeps nested values as STRUCT/ARRAY columns, so a table row is a
+window). The Felix windows go up rebinned to 47 ps (``REBIN`` x 2.34 ps, 266 bins per 5 ms
+window, ~0.8 MB for a 5 s run), at full resolution (2.34 ps, ~5300 bins per window, ~13 MB), or
+not at all (``FELIX_UPLOAD``); ``felix_windows.rebin`` and ``bin_ps`` say which. A
+full-resolution row above ``MAX_ROW_BYTES`` falls back to 47 ps (``write_run``). openJII stores a
+13 MB row whole (checked on dev: every count back from SQL), but its Data page cannot list a table
+holding one yet, so full-resolution runs belong in a table of their own. The platform keeps nested values as STRUCT/ARRAY columns, so a table row is a
 measurement and ``ambit_points.ratio[i]`` or ``felix_windows.counts[j]`` is reachable in SQL.
 ``run_id`` (the run folder's name) tells duplicates.
 
@@ -27,9 +31,14 @@ from .openjii import OpenJIIClient, OpenJIIError, UploadRecord
 
 ROW_FORMAT = 2                   # one row per run (1: one row per sample and per window)
 REBIN = 20                       # 20 x 2.34 ps = 47 ps bins, as the fits use
+FELIX_UPLOAD = {"full": 1, "rebinned": REBIN, "none": None}   # choice -> rebin of the Felix windows
 UPLOAD_FILE = "openjii_upload.ndjson"
 MAX_FILE_BYTES = 100_000_000     # platform limit per NDJSON file
-MAX_ROW_BYTES = 16 * 1024 * 1024  # platform limit per row (Databricks JSON record)
+MAX_ROW_BYTES = 16 * 1024 * 1024  # one row stays below this (a 5 s run at full resolution is ~13 MB)
+
+
+class RowTooLarge(OpenJIIError):
+    """The run's row is above ``MAX_ROW_BYTES``."""
 
 
 def _plain(value):
@@ -96,8 +105,9 @@ def write_ndjson(run_dir: Path, rows, name: str = UPLOAD_FILE) -> tuple[Path, in
         for row in rows:
             line = json.dumps(row, separators=(",", ":"), allow_nan=False)
             if len(line) > MAX_ROW_BYTES:
-                raise OpenJIIError(f"the run's row is {len(line) / 1e6:.0f} MB of JSON, above the platform's "
-                                   f"{MAX_ROW_BYTES / 2 ** 20:.0f} MiB per row: upload without the Felix windows")
+                raise RowTooLarge(f"the run's row is {len(line) / 1e6:.0f} MB of JSON, above the "
+                                  f"{MAX_ROW_BYTES / 2 ** 20:.0f} MiB per row: upload the Felix windows in "
+                                  "47 ps bins or without the Felix windows")
             fh.write(line + "\n")
             n += 1
     size = path.stat().st_size
@@ -105,6 +115,23 @@ def write_ndjson(run_dir: Path, rows, name: str = UPLOAD_FILE) -> tuple[Path, in
         raise OpenJIIError(f"{path.name} is {size / 1e6:.0f} MB, above the platform's {MAX_FILE_BYTES / 1e6:.0f} MB "
                            "per file: upload without the Felix windows")
     return path, n
+
+
+def write_run(run_dir: Path, res: dict, summary: dict, felix: str = "rebinned", label: str = "",
+              log=print) -> Path:
+    """The run's one-row NDJSON file, with the Felix windows as ``felix`` (a ``FELIX_UPLOAD`` key)
+    says. A full-resolution row above ``MAX_ROW_BYTES`` (a run much longer than 5 s) is written
+    with 47 ps bins instead, and the log says so."""
+    rebin = FELIX_UPLOAD[felix]
+    try:
+        path, _ = write_ndjson(run_dir, [run_row(res, summary, include_felix=rebin is not None,
+                                                 rebin=rebin or REBIN, label=label)])
+    except RowTooLarge as exc:
+        if rebin != 1:
+            raise
+        log(f"upload: {str(exc).split(':')[0]}; uploading the Felix windows in 47 ps bins instead")
+        path, _ = write_ndjson(run_dir, [run_row(res, summary, rebin=REBIN, label=label)])
+    return path
 
 
 NO_TABLE_TEXT = ("there is no upload table '{table}' in {exp} yet, and creating one needs manage access "

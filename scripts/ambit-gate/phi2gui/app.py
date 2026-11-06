@@ -176,9 +176,15 @@ class MainWindow(QtWidgets.QMainWindow):
         f.addRow("Upload table", self.table_edit)
         self.chk_upload = QtWidgets.QCheckBox("upload every run when it is analysed")
         f.addRow("", self.chk_upload)
-        self.chk_felix = QtWidgets.QCheckBox("include the Felix histograms (47 ps bins, ~1 MB per run)")
-        self.chk_felix.setChecked(True)
-        f.addRow("", self.chk_felix)
+        self.felix_combo = QtWidgets.QComboBox()
+        self.felix_combo.addItem("47 ps bins (~1 MB per run)", "rebinned")
+        self.felix_combo.addItem("full resolution, 2.34 ps bins (~13 MB per 5 s run)", "full")
+        self.felix_combo.addItem("none (results and AMBIT trace only)", "none")
+        self.felix_combo.setToolTip(
+            "Full resolution keeps every raw Felix bin in the run's row (SQL, notebooks, exports).\n"
+            "openJII's Data page cannot list a table holding such rows yet: use a table of its own,\n"
+            "e.g. ambit_tcspc_runs_full.")
+        f.addRow("Felix histograms", self.felix_combo)
         self.btn_upload = QtWidgets.QPushButton("Upload this run")
         self.btn_upload.clicked.connect(self._upload_current)
         self.lbl_upload = QtWidgets.QLabel("-")
@@ -566,30 +572,33 @@ class MainWindow(QtWidgets.QMainWindow):
         client, exp_id = self.client, self.exp_combo.currentData()
         exp_name = next((e.name for e in self.experiments if e.id == exp_id), "")
         res, summ, run_dir = self.res, self.summary, self.run_dir
-        include = self.chk_felix.isChecked()
+        felix = self.felix_combo.currentData()
         label = self.label_edit.text().strip()
         self.settings.set("experiment_id", exp_id)
         self.settings.set("table_name", table)
 
         def fn(log):
-            path, _ = up.write_ndjson(run_dir, [up.run_row(res, summ, include_felix=include, label=label)])
-            log(f"upload: the run as one row written to {path.name} ({path.stat().st_size / 1e6:.1f} MB)")
-            return up.upload_and_wait(client, exp_id, table, path, log=log, experiment_name=exp_name)
+            path = up.write_run(run_dir, res, summ, felix=felix, label=label, log=log)
+            log(f"upload: {run_dir.name} as one row written to {path.name} ({path.stat().st_size / 1e6:.1f} MB)")
+            rec = up.upload_and_wait(client, exp_id, table, path, log=log, experiment_name=exp_name)
+            # the run on screen may have changed meanwhile (upload every run): the record goes with
+            # the run that was sent
+            return rec, run_dir
 
         self.btn_upload.setEnabled(False)
-        self.lbl_upload.setText("uploading ...")
+        self.lbl_upload.setText(f"uploading {run_dir.name} ...")
         self._start_task(fn, self._upload_done, self._upload_failed)
 
-    def _upload_done(self, rec: oj.UploadRecord) -> None:
+    def _upload_done(self, result: tuple[oj.UploadRecord, Path]) -> None:
+        rec, run_dir = result
         self.btn_upload.setEnabled(True)
-        text = up.describe(rec)
+        text = f"{run_dir.name}: {up.describe(rec)}"
         self.lbl_upload.setText(text)
         self._log("upload " + text)
-        if self.run_dir is not None:
-            try:
-                (self.run_dir / "openjii_upload.json").write_text(json.dumps(rec.__dict__, indent=1), encoding="utf-8")
-            except OSError:
-                pass
+        try:
+            (run_dir / "openjii_upload.json").write_text(json.dumps(rec.__dict__, indent=1), encoding="utf-8")
+        except OSError:
+            pass
 
     def _upload_failed(self, text: str) -> None:
         self.btn_upload.setEnabled(True)
@@ -861,7 +870,8 @@ class MainWindow(QtWidgets.QMainWindow):
         same_format = s.get("row_format") == up.ROW_FORMAT
         self.table_edit.setText(s.get("table_name", DEFAULT_TABLE) if same_format else DEFAULT_TABLE)
         self.chk_upload.setChecked(bool(s.get("upload_after_run", False)))
-        self.chk_felix.setChecked(bool(s.get("include_felix", True)))
+        felix = s.get("felix_upload") or ("rebinned" if s.get("include_felix", True) else "none")
+        self.felix_combo.setCurrentIndex(max(self.felix_combo.findData(felix), 0))
         self.spin_threshold.setValue(float(s.get("threshold_v", ag.THRESHOLD_V)))
         self.spin_level.setValue(int(s.get("level", 255)))
         self.spin_dark.setValue(int(s.get("dark_points", 100)))
@@ -888,7 +898,7 @@ class MainWindow(QtWidgets.QMainWindow):
         s.set("table_name", self.table_edit.text().strip())
         s.set("row_format", up.ROW_FORMAT)
         s.set("upload_after_run", self.chk_upload.isChecked())
-        s.set("include_felix", self.chk_felix.isChecked())
+        s.set("felix_upload", self.felix_combo.currentData())
         s.set("threshold_v", self.spin_threshold.value())
         s.set("level", self.spin_level.value())
         s.set("dark_points", self.spin_dark.value())

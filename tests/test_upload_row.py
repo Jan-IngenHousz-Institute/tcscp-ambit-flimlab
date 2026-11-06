@@ -74,5 +74,41 @@ def test_row_too_large_is_refused(tmp_path, monkeypatch):
         up.write_ndjson(tmp_path, [up.run_row(res, summary)])
 
 
+def _felix(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))["felix_windows"]
+
+
+def test_write_run_full_resolution_keeps_every_raw_bin(tmp_path):
+    res, summary = fake_run(tmp_path)
+    fw = _felix(up.write_run(res["run_dir"], res, summary, felix="full", log=lambda _: None))
+    assert fw["rebin"] == 1 and fw["n_bins"] == N_RAW and math.isclose(fw["bin_ps"], 2.34375)
+    assert np.array_equal(np.asarray(fw["counts"]), res["bins"])
+
+
+def test_write_run_rebinned_and_none(tmp_path):
+    res, summary = fake_run(tmp_path)
+    fw = _felix(up.write_run(res["run_dir"], res, summary, felix="rebinned"))
+    assert fw["rebin"] == up.REBIN and fw["n_bins"] == 266
+    fw = _felix(up.write_run(res["run_dir"], res, summary, felix="none"))
+    assert fw["included"] is False and fw["counts"] is None
+
+
+def test_write_run_falls_back_to_47ps_when_full_resolution_is_too_large(tmp_path, monkeypatch):
+    res, summary = fake_run(tmp_path)
+    rebinned = len(json.dumps(up.run_row(res, summary, rebin=up.REBIN), separators=(",", ":")))
+    monkeypatch.setattr(up, "MAX_ROW_BYTES", rebinned + 10)
+    logged = []
+    fw = _felix(up.write_run(res["run_dir"], res, summary, felix="full", log=logged.append))
+    assert fw["rebin"] == up.REBIN and fw["n_bins"] == 266
+    assert len(logged) == 1 and "47 ps bins instead" in logged[0]
+
+
+def test_write_run_rebinned_too_large_is_refused(tmp_path, monkeypatch):
+    res, summary = fake_run(tmp_path)
+    monkeypatch.setattr(up, "MAX_ROW_BYTES", 1000)
+    with pytest.raises(up.RowTooLarge):
+        up.write_run(res["run_dir"], res, summary, felix="rebinned")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

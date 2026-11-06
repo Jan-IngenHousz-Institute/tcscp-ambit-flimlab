@@ -98,7 +98,8 @@ jobs:
     timeout-minutes: 40
     env:
       VERSION: ${{ needs.version.outputs.version }}
-      ZIP: phi2gui-v${{ needs.version.outputs.version }}-${{ matrix.platform }}.zip
+      # Info-ZIP's zip reads a variable named ZIP as extra arguments, hence ARCHIVE.
+      ARCHIVE: phi2gui-v${{ needs.version.outputs.version }}-${{ matrix.platform }}.zip
     steps:
       - uses: actions/checkout@v6
         with:
@@ -198,7 +199,7 @@ jobs:
         run: |
           Copy-Item packaging/README-dist.txt dist/phi2gui/README.txt
           New-Item -ItemType Directory -Force out | Out-Null
-          Compress-Archive -Path dist/phi2gui -DestinationPath "out/$env:ZIP" -CompressionLevel Optimal
+          Compress-Archive -Path dist/phi2gui -DestinationPath "out/$env:ARCHIVE" -CompressionLevel Optimal
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
@@ -207,10 +208,9 @@ jobs:
           cp packaging/README-dist.txt dist/phi2gui/README.txt
           mkdir -p "$GITHUB_WORKSPACE/out"
           cd dist
-          type -a zip; zip -v | head -2; ls -la; du -sh phi2gui
-          zip -r -y "$GITHUB_WORKSPACE/out/$ZIP" phi2gui | tail -3
+          zip -q -r -y "$GITHUB_WORKSPACE/out/$ARCHIVE" phi2gui
           ls -la "$GITHUB_WORKSPACE/out"
-          test -s "$GITHUB_WORKSPACE/out/$ZIP"
+          test -s "$GITHUB_WORKSPACE/out/$ARCHIVE"
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
@@ -219,9 +219,9 @@ jobs:
           mkdir -p pkg/phi2gui "$GITHUB_WORKSPACE/out"
           cp -R dist/phi2gui.app pkg/phi2gui/
           cp packaging/README-dist.txt pkg/phi2gui/README.txt
-          ditto -c -k --keepParent pkg/phi2gui "$GITHUB_WORKSPACE/out/$ZIP"
+          ditto -c -k --keepParent pkg/phi2gui "$GITHUB_WORKSPACE/out/$ARCHIVE"
           ls -la "$GITHUB_WORKSPACE/out"
-          test -s "$GITHUB_WORKSPACE/out/$ZIP"
+          test -s "$GITHUB_WORKSPACE/out/$ARCHIVE"
 
       - uses: actions/upload-artifact@v6
         with:

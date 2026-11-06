@@ -57,7 +57,12 @@ The measurement of notebook 4 with its results and the upload to openJII, as a d
   takes another TDC-Software export. Every run gets a "Raw data" tab (and `raw.png`), also when the
   fits fail, and a run is refused when the Felix window is longer than half a pause. It bundles
   TEDIEL's `pylibtdc` (the free download from [tediel.com/resources](https://tediel.com/resources));
-  a Felix with a valid licence is still needed. Build it with `build_phi2gui.bat`.
+  a Felix with a valid licence is still needed. Releases are built by
+  `.github/workflows/gui-release.yml`: every merge to `main` that touches the GUI builds the exe on
+  Windows, checks that it starts (`phi2gui.exe --smoke-test`), and publishes it as the next
+  `v<major>.<minor>.<patch+1>`. To jump to a new minor or major version, raise `__version__` in
+  `scripts/ambit-gate/phi2gui/__init__.py` in the PR; otherwise leave it alone. A pull request
+  keeps its exe as a workflow artifact for testing. `build_phi2gui.bat` still builds one locally.
 - **From source**: clone or download this repository, install the requirements above, then
   double-click `phi2gui.bat` in the repository folder (or `python -m phi2gui` from
   `scripts/ambit-gate`). The GitHub release's "Source code" zip is this, not the standalone build.

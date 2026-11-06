@@ -371,8 +371,9 @@ class FelixLink:
         try:
             import pylibtdc as tdc
         except ImportError as exc:
-            raise RuntimeError("pylibtdc is not installed in this Python: in the repository folder run "
-                               "'uv run --no-project packaging/fetch_pylibtdc.py' then 'uv sync'") from exc
+            raise RuntimeError("pylibtdc is not installed in this Python: run 'uv sync' in the repository "
+                               "folder. TEDIEL ships it for Windows and Linux (x64) only, so a Mac cannot "
+                               "drive the Felix") from exc
         self.tdc = tdc
         backend = tdc.TDCBackend()          # never pass a callback: it aborts the process
         devices = backend.getDevices()

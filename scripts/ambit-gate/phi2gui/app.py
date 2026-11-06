@@ -30,7 +30,9 @@ from . import openjii as oj                             # noqa: E402
 from . import upload as up                              # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-if getattr(sys, "frozen", False):                       # PyInstaller build: runs/ next to phi2gui.exe
+if getattr(sys, "frozen", False) and sys.platform == "darwin":   # the .app bundle stays read-only
+    RUNS_DIR = Path.home() / "Documents" / "phi2gui" / "runs"
+elif getattr(sys, "frozen", False):                     # PyInstaller build: runs/ next to the executable
     RUNS_DIR = Path(sys.executable).resolve().parent / "runs"
 else:
     RUNS_DIR = HERE.parent / "runs"

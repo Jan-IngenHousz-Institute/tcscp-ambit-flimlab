@@ -16,6 +16,4 @@ dist/
 
 # uv
 .venv/
-wheelhouse/
-docs/pylibtdc-*.part
 flimgui_settings.json

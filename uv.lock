@@ -686,23 +686,23 @@ wheels = [
 [[package]]
 name = "pylibtdc"
 version = "1.18.2.1"
-source = { path = "wheelhouse/pylibtdc-1.18.2.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl" }
+source = { url = "https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab/releases/download/deps-pylibtdc-2026-09-01/pylibtdc-1.18.2.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl" }
 resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 wheels = [
-    { filename = "pylibtdc-1.18.2.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:55e88385a27f62c4d626986325a74ebce0c7fc1a6f4fbddb127b44c8b741a497" },
+    { url = "https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab/releases/download/deps-pylibtdc-2026-09-01/pylibtdc-1.18.2.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:55e88385a27f62c4d626986325a74ebce0c7fc1a6f4fbddb127b44c8b741a497" },
 ]
 
 [[package]]
 name = "pylibtdc"
 version = "1.18.2.1"
-source = { path = "wheelhouse/pylibtdc-1.18.2.1-cp313-cp313-win_amd64.whl" }
+source = { url = "https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab/releases/download/deps-pylibtdc-2026-09-01/pylibtdc-1.18.2.1-cp313-cp313-win_amd64.whl" }
 resolution-markers = [
     "platform_machine == 'AMD64' and sys_platform == 'win32'",
 ]
 wheels = [
-    { filename = "pylibtdc-1.18.2.1-cp313-cp313-win_amd64.whl", hash = "sha256:6fe7f8dbab2a54819c6adf2ac2af9c662c442e36522c8e4eb7e3407095bfb922" },
+    { url = "https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab/releases/download/deps-pylibtdc-2026-09-01/pylibtdc-1.18.2.1-cp313-cp313-win_amd64.whl", hash = "sha256:6fe7f8dbab2a54819c6adf2ac2af9c662c442e36522c8e4eb7e3407095bfb922" },
 ]
 
 [[package]]
@@ -1005,8 +1005,8 @@ dev = [
     { name = "pytest" },
 ]
 felix = [
-    { name = "pylibtdc", version = "1.18.2.1", source = { path = "wheelhouse/pylibtdc-1.18.2.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl" }, marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "pylibtdc", version = "1.18.2.1", source = { path = "wheelhouse/pylibtdc-1.18.2.1-cp313-cp313-win_amd64.whl" }, marker = "platform_machine == 'AMD64' and sys_platform == 'win32'" },
+    { name = "pylibtdc", version = "1.18.2.1", source = { url = "https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab/releases/download/deps-pylibtdc-2026-09-01/pylibtdc-1.18.2.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl" }, marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "pylibtdc", version = "1.18.2.1", source = { url = "https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab/releases/download/deps-pylibtdc-2026-09-01/pylibtdc-1.18.2.1-cp313-cp313-win_amd64.whl" }, marker = "platform_machine == 'AMD64' and sys_platform == 'win32'" },
 ]
 
 [package.metadata]
@@ -1028,8 +1028,8 @@ dev = [
     { name = "pytest", specifier = ">=8" },
 ]
 felix = [
-    { name = "pylibtdc", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", path = "wheelhouse/pylibtdc-1.18.2.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl" },
-    { name = "pylibtdc", marker = "platform_machine == 'AMD64' and sys_platform == 'win32'", path = "wheelhouse/pylibtdc-1.18.2.1-cp313-cp313-win_amd64.whl" },
+    { name = "pylibtdc", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab/releases/download/deps-pylibtdc-2026-09-01/pylibtdc-1.18.2.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl" },
+    { name = "pylibtdc", marker = "platform_machine == 'AMD64' and sys_platform == 'win32'", url = "https://github.com/Jan-IngenHousz-Institute/tcscp-ambit-flimlab/releases/download/deps-pylibtdc-2026-09-01/pylibtdc-1.18.2.1-cp313-cp313-win_amd64.whl" },
 ]
 
 [[package]]

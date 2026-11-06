@@ -27,7 +27,6 @@ set "UV="
 for /f "delims=" %%i in ('where uv 2^>nul') do if not defined UV set "UV=%%i"
 if defined UV (
     pushd "%~dp0"
-    "%UV%" run --no-project packaging\fetch_pylibtdc.py || (popd & goto :fail)
     "%UV%" sync --locked --quiet || (popd & goto :fail)
     popd
     cd /d "%~dp0scripts\ambit-gate"

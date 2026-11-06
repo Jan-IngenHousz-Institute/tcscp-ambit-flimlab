@@ -21,9 +21,9 @@ from PySide6.QtCore import QObject, QTimer, Signal
 log = logging.getLogger(__name__)
 
 SYNC_CH = 0
-DEFAULT_THRESHOLD_RANGE = (0.0, 2.5)        # V, from the TDC-Software manual
-DEFAULT_DELAY_RANGE = (-614e-9, 614e-9)     # s, from the TDC-Software manual
-MIN_BIN_S = 10e-12                          # floor used by the simulator only
+DEFAULT_THRESHOLD_RANGE = (0.0, 2.5)  # V, from the TDC-Software manual
+DEFAULT_DELAY_RANGE = (-614e-9, 614e-9)  # s, from the TDC-Software manual
+MIN_BIN_S = 10e-12  # floor used by the simulator only
 
 
 class DeviceError(RuntimeError):
@@ -41,7 +41,7 @@ class HistStatus:
 class DeviceBase(QObject):
     """Interface shared by the real Felix and the simulator."""
 
-    counts_updated = Signal(float, object)           # integration time s, {channel: rate Hz}
+    counts_updated = Signal(float, object)  # integration time s, {channel: rate Hz}
     histogram_updated = Signal(int, object, object)  # module index, bins ndarray|None, HistStatus
     connection_lost = Signal(str)
     message = Signal(str)
@@ -91,8 +91,17 @@ class DeviceBase(QObject):
     def stop_counters(self) -> None:
         raise NotImplementedError
 
-    def hist_configure(self, idx: int, ref: int, meas: int, left_s: float, right_s: float,
-                       bin_s: float | None, multi_hit: bool, accumulate: bool) -> None:
+    def hist_configure(
+        self,
+        idx: int,
+        ref: int,
+        meas: int,
+        left_s: float,
+        right_s: float,
+        bin_s: float | None,
+        multi_hit: bool,
+        accumulate: bool,
+    ) -> None:
         raise NotImplementedError
 
     def hist_bounds(self, idx: int) -> tuple[float, float, float]:
@@ -152,9 +161,11 @@ class FelixDevice(DeviceBase):
         backend = tdc.TDCBackend()
         devices = backend.getDevices()
         if not devices:
-            raise DeviceError("No Felix found. Check the WinUSB driver, the USB cable and the "
-                              "5 V supply, and close TDC-Software (only one program can open "
-                              "the device).")
+            raise DeviceError(
+                "No Felix found. Check the WinUSB driver, the USB cable and the "
+                "5 V supply, and close TDC-Software (only one program can open "
+                "the device)."
+            )
         dev = devices[0]
         if self.serial:
             for d in devices:
@@ -206,9 +217,11 @@ class FelixDevice(DeviceBase):
                 self._edge_requests.append(ch.requestEdge(rising))
             except Exception as exc:
                 log.info("requestEdge failed on channel %s: %s", getattr(ch, "index", "?"), exc)
-        self.message.emit(f"Connected to {dev.get('description', 'Felix')} "
-                          f"S/N {dev.get('serial_number', '?')} | channels={len(self._channels)} "
-                          f"histogram modules={len(self._hists)} | libTDC {backend.version()}")
+        self.message.emit(
+            f"Connected to {dev.get('description', 'Felix')} "
+            f"S/N {dev.get('serial_number', '?')} | channels={len(self._channels)} "
+            f"histogram modules={len(self._hists)} | libTDC {backend.version()}"
+        )
         self._lost_reported = False
         self._watchdog = QTimer(self)
         self._watchdog.setInterval(2000)
@@ -387,10 +400,12 @@ class FelixDevice(DeviceBase):
         h.accumulate = bool(accumulate)
 
         def cb(bins, status, _idx=idx):
-            st = HistStatus(running=bool(status.running),
-                            win_id=int(getattr(status, "winID", 0)),
-                            lost=bool(getattr(status, "lost", False)),
-                            overflow=bool(getattr(status, "overflow", False)))
+            st = HistStatus(
+                running=bool(status.running),
+                win_id=int(getattr(status, "winID", 0)),
+                lost=bool(getattr(status, "lost", False)),
+                overflow=bool(getattr(status, "overflow", False)),
+            )
             if not st.running:
                 if self._suppress_stop.get(_idx):
                     # stop caused by hist_reset(): the module is re-enabled right
@@ -405,7 +420,7 @@ class FelixDevice(DeviceBase):
         h.setCallback(cb)
 
     def hist_bounds(self, idx: int) -> tuple[float, float, float]:
-        left, bw, right = self._h(idx).getBounds()   # device order: left, binWidth, right
+        left, bw, right = self._h(idx).getBounds()  # device order: left, binWidth, right
         return float(left), float(right), float(bw)
 
     def hist_enable(self, idx: int, refresh_s: float) -> float:
@@ -426,7 +441,7 @@ class FelixDevice(DeviceBase):
         h = self._h(idx)
         if self.hist_running(idx):
             self._suppress_stop[idx] = True
-            h.disable(True)                      # blocks until the stop callback ran
+            h.disable(True)  # blocks until the stop callback ran
             self._suppress_stop[idx] = False
             h.enable(self._refresh.get(idx, 0.5), 0)
             self._running[idx] = True
@@ -452,12 +467,12 @@ class SimDevice(DeviceBase):
         self._n_ch = n_channels
         self._n_hist = n_hist
         self.laser_hz = 20e6
-        self.sample = "fluorescence"            # or "scatter"
+        self.sample = "fluorescence"  # or "scatter"
         self.signal_rate = {1: 3.0e5, 2: 20.0}  # Hz on each measure channel
         self.dark_rate = 20.0
         self.irf_pos_s = 8e-9
         self.irf_sigma_s = 0.12e-9
-        self.components = [(0.3, 0.8e-9), (0.7, 3.6e-9)]   # (fraction, tau)
+        self.components = [(0.3, 0.8e-9), (0.7, 3.6e-9)]  # (fraction, tau)
         self.pulse_amp_v = 2.5
         self._thr = {ch: 1.2 for ch in range(n_channels)}
         self._delay = {ch: 0.0 for ch in range(n_channels)}
@@ -509,7 +524,7 @@ class SimDevice(DeviceBase):
         thr = self._thr[ch]
         if thr > self.pulse_amp_v * 0.92:
             return 0.0
-        noise = 2e6 * max(0.0, 0.15 - thr) / 0.15     # comparator chatter near 0 V
+        noise = 2e6 * max(0.0, 0.15 - thr) / 0.15  # comparator chatter near 0 V
         if ch == SYNC_CH:
             return self.laser_hz + noise
         return self.signal_rate.get(ch, 0.0) + self.dark_rate + noise
@@ -542,14 +557,23 @@ class SimDevice(DeviceBase):
         # the span fits in N_MAXBIN bins; the accumulator is always N_MAXBIN long.
         span = right_s - left_s
         k = max(math.ceil(math.log2(span / self.N_MAXBIN / self.LSB_S)), 0)
-        min_bin = self.LSB_S * 2 ** k
+        min_bin = self.LSB_S * 2**k
         if not bin_s or bin_s < min_bin:
             bw = min_bin
         else:
             bw = self.LSB_S * 2 ** math.floor(math.log2(bin_s / self.LSB_S))
         n = max(int(round(span / bw)), 1)
-        self._cfg[idx] = dict(ref=ref, meas=meas, left=left_s, right=left_s + n * bw, bw=bw,
-                              n=n, multi_hit=multi_hit, accumulate=accumulate, refresh=0.5)
+        self._cfg[idx] = dict(
+            ref=ref,
+            meas=meas,
+            left=left_s,
+            right=left_s + n * bw,
+            bw=bw,
+            n=n,
+            multi_hit=multi_hit,
+            accumulate=accumulate,
+            refresh=0.5,
+        )
         self._acc[idx] = np.zeros(self.N_MAXBIN)
         self._win[idx] = 0
 
@@ -602,7 +626,7 @@ class SimDevice(DeviceBase):
                 dec += frac / tau * periodic_decay_s(tt, tau, T)
             pdf = np.fft.irfft(np.fft.rfft(irf) * np.fft.rfft(dec), n=m)
             pdf = np.clip(pdf, 0, None)
-        pdf /= pdf.sum() * (T / m)       # density per second over one period
+        pdf /= pdf.sum() * (T / m)  # density per second over one period
         self._pdf_cache[key] = (tt, pdf, T)
         return self._pdf_cache[key]
 
@@ -627,6 +651,5 @@ class SimDevice(DeviceBase):
         else:
             out = window
         self._win[idx] += 1
-        st = HistStatus(running=True, win_id=self._win[idx], lost=False,
-                        overflow=bool(out.max() >= 2 ** 32 - 1))
+        st = HistStatus(running=True, win_id=self._win[idx], lost=False, overflow=bool(out.max() >= 2**32 - 1))
         self.histogram_updated.emit(idx, out.copy(), st)

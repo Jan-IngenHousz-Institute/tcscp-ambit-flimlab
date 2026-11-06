@@ -15,6 +15,7 @@ ambit_chop.report() prints it next to the estimates.
     run = chop_sim.simulate_run("runs/sim_phi2", ac.phi2_protocol(100))
     res = ac.analyse(run)
 """
+
 from __future__ import annotations
 
 import time
@@ -26,44 +27,44 @@ import numpy as np
 import ambit_chop as ac
 import ambit_gate as ag
 
-LSB_S = 2.4e-9 / 2 ** 16          # Felix: TDC period 2.4 ns / 2^16 = 36.62 fs
-T_LASER_S = 12.4998954e-9          # measured laser period on the Felix clock
-TAU1_NS, TAU2_NS = 0.30, 1.80      # two lifetime components; their mix sets the yield
+LSB_S = 2.4e-9 / 2**16  # Felix: TDC period 2.4 ns / 2^16 = 36.62 fs
+T_LASER_S = 12.4998954e-9  # measured laser period on the Felix clock
+TAU1_NS, TAU2_NS = 0.30, 1.80  # two lifetime components; their mix sets the yield
 
 
 @dataclass
 class Leaf:
-    tau_o: float = 0.55        # amplitude-weighted lifetimes (ns): dark-adapted Fo ...
-    tau_m: float = 1.55        # ... Fm (pulse after darkness)
-    tau_s: float = 0.80        # Fs in the actinic light
-    tau_mp: float = 1.10       # Fm' (pulse after light)
-    rise_s: float = 0.03       # yield rise in the pulse
+    tau_o: float = 0.55  # amplitude-weighted lifetimes (ns): dark-adapted Fo ...
+    tau_m: float = 1.55  # ... Fm (pulse after darkness)
+    tau_s: float = 0.80  # Fs in the actinic light
+    tau_mp: float = 1.10  # Fm' (pulse after light)
+    rise_s: float = 0.03  # yield rise in the pulse
     relax_light_s: float = 0.25
     relax_dark_s: float = 0.6
-    gap_relax: float = 0.0     # fractional yield loss over a long dark gap (0 = none) ...
+    gap_relax: float = 0.0  # fractional yield loss over a long dark gap (0 = none) ...
     gap_relax_us: float = 800.0  # ... with this time constant
 
 
 @dataclass
 class Optics:
-    laser_fo_cps: float = 100e3      # laser-excited photons at Fo reaching the SPAD (ND OD 2)
-    floor_ratio_fm: float = 40.0     # LED-excited / laser-excited at Fm' under actinic 255
-    leak_cps: float = 30e3           # stray light, not laser-correlated
+    laser_fo_cps: float = 100e3  # laser-excited photons at Fo reaching the SPAD (ND OD 2)
+    floor_ratio_fm: float = 40.0  # LED-excited / laser-excited at Fm' under actinic 255
+    leak_cps: float = 30e3  # stray light, not laser-correlated
     dead_time_s: float = 200e-9
-    df_fast: float = 3e-3            # delayed fluorescence after LED off, fraction of the lit rate
+    df_fast: float = 3e-3  # delayed fluorescence after LED off, fraction of the lit rate
     df_fast_us: float = 10.0
     df_slow: float = 3e-4
     df_slow_us: float = 200.0
     irf_sigma_ps: float = 60.0
     irf_tail_ps: float = 50.0
-    wander_ps: float = 1250.0        # amplitude of the laser phase wander (sine)
+    wander_ps: float = 1250.0  # amplitude of the laser phase wander (sine)
     wander_period_s: float = 3.2
 
 
 def _states(protocol: list[dict], leaf: Leaf) -> list[float]:
     """Target lifetime of every line."""
     out, lit_before = [], False
-    top = max(s["actinic"] for s in protocol)          # the saturating pulse: brightest line
+    top = max(s["actinic"] for s in protocol)  # the saturating pulse: brightest line
     for s in protocol:
         a = s["actinic"]
         if a <= ag.ACTINIC_ON:
@@ -78,7 +79,7 @@ def _states(protocol: list[dict], leaf: Leaf) -> list[float]:
 
 def _schedule(protocol, gap_us, period_us, t_start, clock_ppm, rng, chop=True):
     """Line spans, LED-on spans, gaps (Felix seconds), mimicking run_arr_trigger + chop."""
-    k_clk = 1.0 + clock_ppm * 1e-6        # AMBIT seconds -> Felix seconds
+    k_clk = 1.0 + clock_ppm * 1e-6  # AMBIT seconds -> Felix seconds
     t, lines, gaps = t_start, [], []
     write_max = 0.0
     for i, s in enumerate(protocol):
@@ -131,7 +132,7 @@ def _tau_at(t, lines, taus, leaf: Leaf):
         else:
             tc = leaf.relax_light_s if ln["lit"] else leaf.relax_dark_s
         if ln["t0"] == lines[0]["t0"]:
-            start = tau                      # first line: already in its state (pre-adapted)
+            start = tau  # first line: already in its state (pre-adapted)
         else:
             start = prev
         out[m] = tau + (start - tau) * np.exp(-(t[m] - ln["t0"]) / tc)
@@ -163,10 +164,20 @@ def _renewal(a: float, b: float, rate: float, dead: float, rng) -> np.ndarray:
     return t[t < b]
 
 
-def simulate_run(out_dir, protocol: list[dict], gap_us: int = ac.GAP_US, period_us: int = ac.CHOP_PERIOD_US,
-                 leaf: Leaf | None = None, optics: Optics | None = None, pre_s: float = 0.3,
-                 post_s: float = 0.3, clock_ppm: float = -28.0, seed: int = 1, chop: bool = True,
-                 log=print) -> Path:
+def simulate_run(
+    out_dir,
+    protocol: list[dict],
+    gap_us: int = ac.GAP_US,
+    period_us: int = ac.CHOP_PERIOD_US,
+    leaf: Leaf | None = None,
+    optics: Optics | None = None,
+    pre_s: float = 0.3,
+    post_s: float = 0.3,
+    clock_ppm: float = -28.0,
+    seed: int = 1,
+    chop: bool = True,
+    log=print,
+) -> Path:
     """Write ttm.bin, ambit.csv and run.json for one synthetic chopped run."""
     t_wall = time.monotonic()
     leaf, opt = leaf or Leaf(), optics or Optics()
@@ -177,7 +188,7 @@ def simulate_run(out_dir, protocol: list[dict], gap_us: int = ac.GAP_US, period_
     lines, gaps, write_max = _schedule(protocol, gap_us, period_us, t_start, clock_ppm, rng, chop)
     taus = _states(protocol, leaf)
     t_total = lines[-1]["t1"] + post_s
-    k_led = opt.floor_ratio_fm * opt.laser_fo_cps / 255.0     # LED-excited cps per mA at Fo yield
+    k_led = opt.floor_ratio_fm * opt.laser_fo_cps / 255.0  # LED-excited cps per mA at Fo yield
 
     # LED-on pieces (between gaps) and LED-off pieces
     on, off = [], []
@@ -193,7 +204,7 @@ def simulate_run(out_dir, protocol: list[dict], gap_us: int = ac.GAP_US, period_
             a = g1
         on.append((a, ln["t1"], ln["actinic"]))
         t_prev_off = ln["t1"]
-        off.append((ln["t1"], ln["t1"], (ln["actinic"], ln["t1"])))     # marks the DF after switch-off
+        off.append((ln["t1"], ln["t1"], (ln["actinic"], ln["t1"])))  # marks the DF after switch-off
     off.append((t_prev_off, t_total, None))
 
     # photons while the LED is on: saturated renewal process, laser fraction by rate
@@ -212,7 +223,7 @@ def simulate_run(out_dir, protocol: list[dict], gap_us: int = ac.GAP_US, period_
         if b <= a and src is None:
             continue
         dur = max(b - a, 0.0)
-        tt_l = a + dur * rng.random(rng.poisson(opt.laser_fo_cps * 3.0 * dur))      # thinned below
+        tt_l = a + dur * rng.random(rng.poisson(opt.laser_fo_cps * 3.0 * dur))  # thinned below
         tt_k = a + dur * rng.random(rng.poisson(opt.leak_cps * dur))
         parts_t, parts_l = [tt_l, tt_k], [np.ones(tt_l.size, bool), np.zeros(tt_k.size, bool)]
         if src is not None:
@@ -263,7 +274,7 @@ def simulate_run(out_dir, protocol: list[dict], gap_us: int = ac.GAP_US, period_
     k = np.floor((tl - phase(tl)) / T)
     tau_amp = _tau_at(tl, lines, taus, leaf) * relax(tl)
     f2 = np.clip((tau_amp - TAU1_NS) / (TAU2_NS - TAU1_NS), 0, 1)
-    p2_ = f2 * TAU2_NS / ((1 - f2) * TAU1_NS + f2 * TAU2_NS)        # photon fraction of component 2
+    p2_ = f2 * TAU2_NS / ((1 - f2) * TAU1_NS + f2 * TAU2_NS)  # photon fraction of component 2
     tau_draw = np.where(rng.random(tl.size) < p2_, TAU2_NS, TAU1_NS) * 1e-9
     irf = rng.normal(0, opt.irf_sigma_ps * 1e-12, tl.size) + rng.exponential(opt.irf_tail_ps * 1e-12, tl.size)
     t_all[is_laser] = phase(tl) + k * T + 4e-9 + irf + rng.exponential(tau_draw)
@@ -273,7 +284,7 @@ def simulate_run(out_dir, protocol: list[dict], gap_us: int = ac.GAP_US, period_
     header = np.array([ac.TTM_MAGIC, 10, int(time.time() * 1000), 0, 2_400_000, 0, 16, 3, 1, 0], dtype="<u8")
     rec = np.zeros(t_all.size, ac.REC)
     rec["ce"] = 0x80 | ag.SPAD_CH
-    rec["t"] = np.rint((t_all + 1234.5) / LSB_S).astype(np.uint64)      # board up for 20 minutes
+    rec["t"] = np.rint((t_all + 1234.5) / LSB_S).astype(np.uint64)  # board up for 20 minutes
     with open(out_dir / "ttm.bin", "wb") as fh:
         fh.write(header.tobytes())
         fh.write(rec.tobytes())
@@ -287,19 +298,42 @@ def simulate_run(out_dir, protocol: list[dict], gap_us: int = ac.GAP_US, period_
         s_630 += list(np.rint(ratio * 5300).astype(int))
     data = dict(s_630=np.array(s_630), r_630=np.array(r_630))
     dark = [b - a for g in gaps for a, b in g]
-    truth = dict(tau_o=leaf.tau_o, tau_m=leaf.tau_m, tau_s=leaf.tau_s, tau_mp=leaf.tau_mp,
-                 phi2=1 - leaf.tau_s / leaf.tau_mp, fvfm=1 - leaf.tau_o / leaf.tau_m)
-    ac.save_run_meta(out_dir, protocol=protocol, cmd=ag.build_arrun(protocol), data=data,
-                     chop=dict(gap_us=gap_us if chop else 0, period_us=period_us if chop else 0),
-                     chopstat=dict(result=0, gap_us=gap_us, period_us=period_us, gaps=len(dark),
-                                   dark_min_us=int(min(dark) * 1e6) if dark else 0,
-                                   dark_max_us=int(max(dark) * 1e6) if dark else 0,
-                                   write_max_us=int(write_max * 1e6)),
-                     clock=dict(f_sync_hz=1.0 / T_LASER_S * (1 + 3e-9), rates={0: 1 / T_LASER_S, 1: 0.0}),
-                     ttm=dict(captured=int(t_all.size), lost=0), ttm_mode=dict(sync=False), laser_hz=80e6,
-                     pre_s=pre_s, post_s=post_s, persist=0, ambit=dict(name="simulated", fw="sim"),
-                     felix="simulated", simulated=dict(**truth, leaf=asdict(leaf), optics=asdict(opt),
-                                                       clock_ppm=clock_ppm, seed=seed))
-    log(f"simulated {t_all.size:,} SPAD events over {t_total:.2f} s, {len(dark):,} gaps "
-        f"({time.monotonic() - t_wall:.1f} s) -> {out_dir}")
+    truth = dict(
+        tau_o=leaf.tau_o,
+        tau_m=leaf.tau_m,
+        tau_s=leaf.tau_s,
+        tau_mp=leaf.tau_mp,
+        phi2=1 - leaf.tau_s / leaf.tau_mp,
+        fvfm=1 - leaf.tau_o / leaf.tau_m,
+    )
+    ac.save_run_meta(
+        out_dir,
+        protocol=protocol,
+        cmd=ag.build_arrun(protocol),
+        data=data,
+        chop=dict(gap_us=gap_us if chop else 0, period_us=period_us if chop else 0),
+        chopstat=dict(
+            result=0,
+            gap_us=gap_us,
+            period_us=period_us,
+            gaps=len(dark),
+            dark_min_us=int(min(dark) * 1e6) if dark else 0,
+            dark_max_us=int(max(dark) * 1e6) if dark else 0,
+            write_max_us=int(write_max * 1e6),
+        ),
+        clock=dict(f_sync_hz=1.0 / T_LASER_S * (1 + 3e-9), rates={0: 1 / T_LASER_S, 1: 0.0}),
+        ttm=dict(captured=int(t_all.size), lost=0),
+        ttm_mode=dict(sync=False),
+        laser_hz=80e6,
+        pre_s=pre_s,
+        post_s=post_s,
+        persist=0,
+        ambit=dict(name="simulated", fw="sim"),
+        felix="simulated",
+        simulated=dict(**truth, leaf=asdict(leaf), optics=asdict(opt), clock_ppm=clock_ppm, seed=seed),
+    )
+    log(
+        f"simulated {t_all.size:,} SPAD events over {t_total:.2f} s, {len(dark):,} gaps "
+        f"({time.monotonic() - t_wall:.1f} s) -> {out_dir}"
+    )
     return out_dir

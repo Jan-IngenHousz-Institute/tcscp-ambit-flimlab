@@ -14,6 +14,7 @@ queryable. A new table is listed by the platform only a few minutes after its fi
 finished; an append before that is refused (404 "No upload table with id"): wait and retry.
 Limits: 100 MB per NDJSON file, 100 files per upload, one row at most 16 MiB.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,7 +24,6 @@ import sys
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import requests
 
@@ -66,11 +66,11 @@ class Experiment:
 @dataclass
 class UploadRecord:
     upload_id: str
-    status: str                  # receiving, queued, pending, running, completed, failed
-    table_id: Optional[str]
-    table_name: Optional[str]
-    row_count: Optional[int]
-    error_code: Optional[str]
+    status: str  # receiving, queued, pending, running, completed, failed
+    table_id: str | None
+    table_name: str | None
+    row_count: int | None
+    error_code: str | None
     rejected_files: list = field(default_factory=list)
 
     @property
@@ -93,7 +93,7 @@ class Settings:
     """What the GUI remembers between runs: API keys per environment, the last experiment and
     table, the instrument port, the measurement parameters. A JSON file in the user's profile."""
 
-    def __init__(self, path: Optional[Path] = None) -> None:
+    def __init__(self, path: Path | None = None) -> None:
         self.path = Path(path) if path else config_dir() / "phi2gui.json"
         self.data: dict = {}
         try:
@@ -107,7 +107,7 @@ class Settings:
         tmp.write_text(json.dumps(self.data, indent=2), encoding="utf-8")
         tmp.replace(self.path)
         try:
-            os.chmod(self.path, 0o600)       # POSIX; Windows profiles are private already
+            os.chmod(self.path, 0o600)  # POSIX; Windows profiles are private already
         except OSError:
             pass
 
@@ -131,8 +131,9 @@ class OpenJIIClient:
         self.api_key = api_key.strip()
         self.timeout = timeout
         self._session = requests.Session()
-        self._session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json",
-                                      "x-api-key": self.api_key})
+        self._session.headers.update(
+            {"User-Agent": USER_AGENT, "Accept": "application/json", "x-api-key": self.api_key}
+        )
 
     def _request(self, method: str, path: str, **kw) -> tuple[int, object]:
         kw.setdefault("timeout", self.timeout)
@@ -171,15 +172,19 @@ class OpenJIIClient:
     # --------------------------------------------------------- experiments
     def list_experiments(self) -> list[Experiment]:
         """Active experiments the user is a member of."""
-        status, payload = self._request("GET", "/api/v1/experiments",
-                                        params={"filter": "member", "status": "active", "pageSize": 100})
+        status, payload = self._request(
+            "GET", "/api/v1/experiments", params={"filter": "member", "status": "active", "pageSize": 100}
+        )
         if status != 200:
             raise OpenJIIError(f"listing experiments failed ({status}): {self._error_text(payload)}")
         items = payload.get("items") if isinstance(payload, dict) else payload
         if not isinstance(items, list):
             raise OpenJIIError(f"unexpected experiments reply: {str(payload)[:200]}")
-        return [Experiment(e["id"], e.get("name") or e["id"], e.get("status") or "")
-                for e in items if isinstance(e, dict) and e.get("id")]
+        return [
+            Experiment(e["id"], e.get("name") or e["id"], e.get("status") or "")
+            for e in items
+            if isinstance(e, dict) and e.get("id")
+        ]
 
     def capabilities(self, experiment_id: str) -> dict:
         """{'canContribute': bool, 'canManage': bool, ...} of the signed-in user."""
@@ -189,7 +194,7 @@ class OpenJIIClient:
         return payload.get("capabilities") or {}
 
     # ------------------------------------------------------------- uploads
-    def list_uploads(self, experiment_id: str, table_name: Optional[str] = None) -> list[UploadRecord]:
+    def list_uploads(self, experiment_id: str, table_name: str | None = None) -> list[UploadRecord]:
         params = {"uploadTableName": table_name} if table_name else {}
         status, payload = self._request("GET", f"/api/v1/experiments/{experiment_id}/data/uploads", params=params)
         if status != 200 or not isinstance(payload, dict):
@@ -197,25 +202,41 @@ class OpenJIIClient:
         out = []
         for u in payload.get("uploads") or []:
             if isinstance(u, dict) and u.get("uploadId"):
-                out.append(UploadRecord(u["uploadId"], u.get("status") or "", u.get("uploadTableId"),
-                                        u.get("uploadTableName"), u.get("rowCount"), u.get("errorCode"),
-                                        u.get("rejectedFiles") or []))
+                out.append(
+                    UploadRecord(
+                        u["uploadId"],
+                        u.get("status") or "",
+                        u.get("uploadTableId"),
+                        u.get("uploadTableName"),
+                        u.get("rowCount"),
+                        u.get("errorCode"),
+                        u.get("rejectedFiles") or [],
+                    )
+                )
         return out
 
-    def find_table(self, experiment_id: str, table_name: str) -> Optional[str]:
+    def find_table(self, experiment_id: str, table_name: str) -> str | None:
         """The upload table's id if an upload into it exists, else None."""
         for u in self.list_uploads(experiment_id, table_name):
             if u.table_id and u.table_name == table_name:
                 return u.table_id
         return None
 
-    def upload_files(self, experiment_id: str, table_name: str, table_id: Optional[str],
-                     paths: list[Path], upload_id: Optional[str] = None) -> dict:
+    def upload_files(
+        self,
+        experiment_id: str,
+        table_name: str,
+        table_id: str | None,
+        paths: list[Path],
+        upload_id: str | None = None,
+    ) -> dict:
         """Upload NDJSON files into ``table_name`` (created when ``table_id`` is None).
         Returns {'uploadId', 'uploadTableId', 'uploadTableName', 'files'}."""
         if not TABLE_NAME_RE.match(table_name) or table_name.startswith("_"):
-            raise OpenJIIError(f"invalid table name {table_name!r}: letters, digits and underscores, "
-                               "starting with a letter, at most 63 characters")
+            raise OpenJIIError(
+                f"invalid table name {table_name!r}: letters, digits and underscores, "
+                "starting with a letter, at most 63 characters"
+            )
         upload_id = upload_id or str(uuid.uuid4())
         fields = {"sourceKind": UPLOAD_SOURCE_KIND, "uploadId": upload_id}
         if table_id:
@@ -231,8 +252,13 @@ class OpenJIIClient:
                 files.append(("files", (p.name, f, "application/x-ndjson")))
             # requests puts the text fields before the files in the multipart body, which the
             # backend requires (it resolves the target on the first file).
-            status, payload = self._request("POST", f"/api/v1/experiments/{experiment_id}/data/uploads",
-                                            data=fields, files=files, timeout=max(self.timeout, 600))
+            status, payload = self._request(
+                "POST",
+                f"/api/v1/experiments/{experiment_id}/data/uploads",
+                data=fields,
+                files=files,
+                timeout=max(self.timeout, 600),
+            )
         finally:
             for f in handles:
                 f.close()

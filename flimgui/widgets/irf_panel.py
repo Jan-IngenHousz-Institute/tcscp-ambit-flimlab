@@ -5,16 +5,26 @@ from __future__ import annotations
 import time
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout,
-                               QLabel, QLineEdit, QProgressBar, QPushButton, QVBoxLayout)
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QProgressBar,
+    QPushButton,
+    QVBoxLayout,
+)
 
 from ..irf import IRF
 
 
 class IRFPanel(QGroupBox):
-    record_requested = Signal(float, str)   # duration s, name
+    record_requested = Signal(float, str)  # duration s, name
     cancel_requested = Signal()
-    active_changed = Signal(str)            # "" = none
+    active_changed = Signal(str)  # "" = none
     delete_requested = Signal(str)
 
     def __init__(self):
@@ -31,8 +41,10 @@ class IRFPanel(QGroupBox):
 
         rec = QHBoxLayout()
         self.rec_btn = QPushButton("Record IRF")
-        self.rec_btn.setToolTip("Put a scatterer in place of the sample, remove the emission "
-                                "filter, keep the rate below 500 kcps, then record.")
+        self.rec_btn.setToolTip(
+            "Put a scatterer in place of the sample, remove the emission "
+            "filter, keep the rate below 500 kcps, then record."
+        )
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setEnabled(False)
         rec.addWidget(self.rec_btn)
@@ -97,8 +109,10 @@ class IRFPanel(QGroupBox):
             self.active_lbl.setText("active IRF: none (tail fit will be used)")
             return
         created = time.strftime("%Y-%m-%d %H:%M", time.localtime(irf.created)) if irf.created else "?"
-        txt = (f"active IRF: <b>{irf.name}</b><br>{irf.total():,} counts, {irf.n} bins of "
-               f"{irf.bin_ns * 1000:.1f} ps, from {irf.left_ns:.2f} ns, recorded {created}")
+        txt = (
+            f"active IRF: <b>{irf.name}</b><br>{irf.total():,} counts, {irf.n} bins of "
+            f"{irf.bin_ns * 1000:.1f} ps, from {irf.left_ns:.2f} ns, recorded {created}"
+        )
         if resampled:
             txt += "<br><span style='color:#b06000'>resampled onto the current histogram axis</span>"
         if note:

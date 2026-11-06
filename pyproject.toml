@@ -16,7 +16,12 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8", "nbstripout>=0.7", "ipykernel>=6"]
+dev = [
+    "pytest>=8",
+    "nbstripout>=0.7",
+    "ipykernel>=6",
+    "ruff>=0.17",
+]
 build = ["pyinstaller>=6.10"]
 # TEDIEL's Felix bindings: not on PyPI, so the wheels are assets of this repo's deps-pylibtdc-* release
 felix = [
@@ -35,3 +40,19 @@ pylibtdc = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B"]
+# E501: the formatter sets line length. E731: named lambdas are a deliberate style here.
+# B905: zip over equal-length arrays is everywhere in the analysis; strict= would add noise.
+ignore = ["E501", "E731", "B905"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "ambit_chop", "ambit_gate", "ambit_pause", "blank_dose", "chop_sim", "fvfm_lifetime",
+    "phi2_lifetime", "reconv", "flimgui", "phi2gui",
+]

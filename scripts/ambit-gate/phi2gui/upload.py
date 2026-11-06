@@ -16,6 +16,7 @@ measurement and ``ambit_points.ratio[i]`` or ``felix_windows.counts[j]`` is reac
 Rows before ``ROW_FORMAT`` 2 were one per AMBIT sample and per Felix window (``kind`` column);
 those tables cannot take the new rows, hence a new default table name in the GUI.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,17 +24,16 @@ import math
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
 from .openjii import OpenJIIClient, OpenJIIError, UploadRecord
 
-ROW_FORMAT = 2                   # one row per run (1: one row per sample and per window)
-REBIN = 20                       # 20 x 2.34 ps = 47 ps bins, as the fits use
-FELIX_UPLOAD = {"full": 1, "rebinned": REBIN, "none": None}   # choice -> rebin of the Felix windows
+ROW_FORMAT = 2  # one row per run (1: one row per sample and per window)
+REBIN = 20  # 20 x 2.34 ps = 47 ps bins, as the fits use
+FELIX_UPLOAD = {"full": 1, "rebinned": REBIN, "none": None}  # choice -> rebin of the Felix windows
 UPLOAD_FILE = "openjii_upload.ndjson"
-MAX_FILE_BYTES = 100_000_000     # platform limit per NDJSON file
+MAX_FILE_BYTES = 100_000_000  # platform limit per NDJSON file
 MAX_ROW_BYTES = 16 * 1024 * 1024  # one row stays below this (a 5 s run at full resolution is ~13 MB)
 
 
@@ -78,22 +78,54 @@ def run_row(res: dict, summary: dict, include_felix: bool = True, rebin: int = R
     results = {k: v for k, v in summary.items() if k not in ("fits", "warnings")}
     a = res["ambit"]
     lines = np.asarray(a["line"]).astype(int)
-    ambit_points = dict(n=int(lines.size), t_s=a["t"], s_630=a["s_630"], r_630=a["r_630"], ratio=a["ratio"],
-                        actinic=a["actinic"], line=lines, role=[roles.get(int(ln), "") for ln in lines])
-    felix_windows = dict(included=bool(include_felix), n=None, rebin=None, bin_ps=None, n_bins=None,
-                         t_start_s=None, counts=None)
+    ambit_points = dict(
+        n=int(lines.size),
+        t_s=a["t"],
+        s_630=a["s_630"],
+        r_630=a["r_630"],
+        ratio=a["ratio"],
+        actinic=a["actinic"],
+        line=lines,
+        role=[roles.get(int(ln), "") for ln in lines],
+    )
+    felix_windows = dict(
+        included=bool(include_felix), n=None, rebin=None, bin_ps=None, n_bins=None, t_start_s=None, counts=None
+    )
     if include_felix:
         bins = np.asarray(res["bins"])
         n = bins.shape[1] // rebin
-        reb = bins[:, :n * rebin].reshape(bins.shape[0], n, rebin).sum(2).astype(np.int64)
-        felix_windows.update(n=int(bins.shape[0]), rebin=int(rebin), bin_ps=res["bin_s"] * rebin * 1e12, n_bins=n,
-                             t_start_s=[round(float(t), 6) for t in res["ts"]], counts=reb)
-    return _plain(dict(row_format=ROW_FORMAT, run_id=run_dir.name, timestamp_local=_timestamp(meta, run_dir),
-                       label=label, note=meta.get("note", ""), protocol=meta.get("protocol"), ambit_cmd=meta.get("cmd"),
-                       laser_hz=meta.get("laser_hz"), window_s=res["W"], bin_s=res["bin_s"], ambit=meta.get("ambit"),
-                       felix=meta.get("felix"), pre_illumination=meta.get("pre_illumination"),
-                       alignment=meta.get("align"), results=results, fits=summary["fits"],
-                       warnings=summary["warnings"], ambit_points=ambit_points, felix_windows=felix_windows))
+        reb = bins[:, : n * rebin].reshape(bins.shape[0], n, rebin).sum(2).astype(np.int64)
+        felix_windows.update(
+            n=int(bins.shape[0]),
+            rebin=int(rebin),
+            bin_ps=res["bin_s"] * rebin * 1e12,
+            n_bins=n,
+            t_start_s=[round(float(t), 6) for t in res["ts"]],
+            counts=reb,
+        )
+    return _plain(
+        dict(
+            row_format=ROW_FORMAT,
+            run_id=run_dir.name,
+            timestamp_local=_timestamp(meta, run_dir),
+            label=label,
+            note=meta.get("note", ""),
+            protocol=meta.get("protocol"),
+            ambit_cmd=meta.get("cmd"),
+            laser_hz=meta.get("laser_hz"),
+            window_s=res["W"],
+            bin_s=res["bin_s"],
+            ambit=meta.get("ambit"),
+            felix=meta.get("felix"),
+            pre_illumination=meta.get("pre_illumination"),
+            alignment=meta.get("align"),
+            results=results,
+            fits=summary["fits"],
+            warnings=summary["warnings"],
+            ambit_points=ambit_points,
+            felix_windows=felix_windows,
+        )
+    )
 
 
 def write_ndjson(run_dir: Path, rows, name: str = UPLOAD_FILE) -> tuple[Path, int]:
@@ -105,27 +137,31 @@ def write_ndjson(run_dir: Path, rows, name: str = UPLOAD_FILE) -> tuple[Path, in
         for row in rows:
             line = json.dumps(row, separators=(",", ":"), allow_nan=False)
             if len(line) > MAX_ROW_BYTES:
-                raise RowTooLarge(f"the run's row is {len(line) / 1e6:.0f} MB of JSON, above the "
-                                  f"{MAX_ROW_BYTES / 2 ** 20:.0f} MiB per row: upload the Felix windows in "
-                                  "47 ps bins or without the Felix windows")
+                raise RowTooLarge(
+                    f"the run's row is {len(line) / 1e6:.0f} MB of JSON, above the "
+                    f"{MAX_ROW_BYTES / 2**20:.0f} MiB per row: upload the Felix windows in "
+                    "47 ps bins or without the Felix windows"
+                )
             fh.write(line + "\n")
             n += 1
     size = path.stat().st_size
     if size > MAX_FILE_BYTES:
-        raise OpenJIIError(f"{path.name} is {size / 1e6:.0f} MB, above the platform's {MAX_FILE_BYTES / 1e6:.0f} MB "
-                           "per file: upload without the Felix windows")
+        raise OpenJIIError(
+            f"{path.name} is {size / 1e6:.0f} MB, above the platform's {MAX_FILE_BYTES / 1e6:.0f} MB "
+            "per file: upload without the Felix windows"
+        )
     return path, n
 
 
-def write_run(run_dir: Path, res: dict, summary: dict, felix: str = "rebinned", label: str = "",
-              log=print) -> Path:
+def write_run(run_dir: Path, res: dict, summary: dict, felix: str = "rebinned", label: str = "", log=print) -> Path:
     """The run's one-row NDJSON file, with the Felix windows as ``felix`` (a ``FELIX_UPLOAD`` key)
     says. A full-resolution row above ``MAX_ROW_BYTES`` (a run much longer than 5 s) is written
     with 47 ps bins instead, and the log says so."""
     rebin = FELIX_UPLOAD[felix]
     try:
-        path, _ = write_ndjson(run_dir, [run_row(res, summary, include_felix=rebin is not None,
-                                                 rebin=rebin or REBIN, label=label)])
+        path, _ = write_ndjson(
+            run_dir, [run_row(res, summary, include_felix=rebin is not None, rebin=rebin or REBIN, label=label)]
+        )
     except RowTooLarge as exc:
         if rebin != 1:
             raise
@@ -134,15 +170,16 @@ def write_run(run_dir: Path, res: dict, summary: dict, felix: str = "rebinned", 
     return path
 
 
-NO_TABLE_TEXT = ("there is no upload table '{table}' in {exp} yet, and creating one needs manage access "
-                 "(experiment admin), which your account does not have. Ask an admin of the experiment "
-                 "to upload the first run from this GUI with the same table name (later uploads only "
-                 "need contribute access), or to make you an admin; or type the name of an upload table "
-                 "that already exists (Data page of the experiment)")
+NO_TABLE_TEXT = (
+    "there is no upload table '{table}' in {exp} yet, and creating one needs manage access "
+    "(experiment admin), which your account does not have. Ask an admin of the experiment "
+    "to upload the first run from this GUI with the same table name (later uploads only "
+    "need contribute access), or to make you an admin; or type the name of an upload table "
+    "that already exists (Data page of the experiment)"
+)
 
 
-def check_access(client: OpenJIIClient, experiment_id: str, table_name: str,
-                 experiment_name: str = "") -> Optional[str]:
+def check_access(client: OpenJIIClient, experiment_id: str, table_name: str, experiment_name: str = "") -> str | None:
     """The id of the existing upload table ``table_name`` (None when the first upload will create
     it), or OpenJIIError when this account cannot upload: appending needs *contribute* access on
     the experiment, creating a table *manage* access (experiment admin). The platform refuses a
@@ -151,29 +188,36 @@ def check_access(client: OpenJIIClient, experiment_id: str, table_name: str,
     exp = f"'{experiment_name}'" if experiment_name else "this experiment"
     caps = client.capabilities(experiment_id)
     if not caps.get("canContribute"):
-        raise OpenJIIError(f"your account cannot contribute data to {exp}: ask its admin to add you "
-                           "as a member")
+        raise OpenJIIError(f"your account cannot contribute data to {exp}: ask its admin to add you as a member")
     table_id = client.find_table(experiment_id, table_name)
     if table_id is None and not caps.get("canManage"):
         raise OpenJIIError(NO_TABLE_TEXT.format(table=table_name, exp=exp))
     return table_id
 
 
-def upload_and_wait(client: OpenJIIClient, experiment_id: str, table_name: str, path: Path, log=print,
-                    poll_s: float = 10.0, timeout_s: float = 900.0, experiment_name: str = "") -> UploadRecord:
+def upload_and_wait(
+    client: OpenJIIClient,
+    experiment_id: str,
+    table_name: str,
+    path: Path,
+    log=print,
+    poll_s: float = 10.0,
+    timeout_s: float = 900.0,
+    experiment_name: str = "",
+) -> UploadRecord:
     """Upload one NDJSON file into the experiment's table (created on the first upload), then poll
     until the platform reports the rows queryable or the upload failed. Returns the final record;
     a record with status 'uploaded' means the platform had not finished within ``timeout_s``.
     OpenJIIError before anything is sent when the account cannot upload (``check_access``)."""
     table_id = check_access(client, experiment_id, table_name, experiment_name)
-    log(f"upload: {'appending to' if table_id else 'creating'} table {table_name} "
-        f"({path.stat().st_size / 1e6:.1f} MB)")
+    log(f"upload: {'appending to' if table_id else 'creating'} table {table_name} ({path.stat().st_size / 1e6:.1f} MB)")
     result = client.upload_files(experiment_id, table_name, table_id, [path])
     upload_id = result["uploadId"]
     accepted = {f.get("fileName") for f in result.get("files") or []}
     if path.name not in accepted:
-        return UploadRecord(upload_id, "failed", result.get("uploadTableId"), table_name, None,
-                            "file_not_accepted", [path.name])
+        return UploadRecord(
+            upload_id, "failed", result.get("uploadTableId"), table_name, None, "file_not_accepted", [path.name]
+        )
     log(f"upload {upload_id[:8]} sent; waiting for the platform (job on Databricks, polled every {poll_s:.0f} s)")
     t_end = time.monotonic() + timeout_s
     last = ""

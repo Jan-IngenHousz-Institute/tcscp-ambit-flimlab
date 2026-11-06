@@ -11,6 +11,7 @@ PyInstaller only bundles what is installed on the build machine, so a library mi
 runner would otherwise leave the bundle depending on the user's system without anyone noticing.
 Windows has no equivalent check here: the smoke test runs the exe on a fresh runner instead.
 """
+
 from __future__ import annotations
 
 import re

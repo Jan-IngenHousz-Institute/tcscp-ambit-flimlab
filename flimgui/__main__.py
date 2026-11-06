@@ -20,8 +20,9 @@ def main(argv=None) -> int:
     parser.add_argument("--serial", default="", help="serial number of the Felix to open")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
-                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
 
     app = QApplication(sys.argv)
     app.setApplicationName("FLIM GUI")
@@ -33,12 +34,12 @@ def main(argv=None) -> int:
         try:
             device.open()
         except DeviceError as exc:
-            QMessageBox.warning(None, "No Felix",
-                                f"{exc}\n\nStarting in simulator mode so you can still use the GUI.")
+            QMessageBox.warning(None, "No Felix", f"{exc}\n\nStarting in simulator mode so you can still use the GUI.")
             device = None
         except Exception as exc:  # unexpected library error
-            QMessageBox.warning(None, "Device error",
-                                f"Unexpected error while opening the Felix:\n{exc}\n\nStarting in simulator mode.")
+            QMessageBox.warning(
+                None, "Device error", f"Unexpected error while opening the Felix:\n{exc}\n\nStarting in simulator mode."
+            )
             device = None
     if device is None:
         device = SimDevice()

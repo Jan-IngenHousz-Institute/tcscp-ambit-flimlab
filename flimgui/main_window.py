@@ -7,15 +7,27 @@ import time
 from dataclasses import dataclass, field
 
 import numpy as np
-from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout,
-                               QLabel, QMainWindow, QMessageBox, QScrollArea, QStackedWidget,
-                               QStatusBar, QTabWidget, QVBoxLayout, QWidget)
+from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QMainWindow,
+    QMessageBox,
+    QScrollArea,
+    QStackedWidget,
+    QStatusBar,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
-from .device import SYNC_CH, DeviceBase, DeviceError, HistStatus
+from .device import SYNC_CH, DeviceBase, HistStatus
 from .fitting import FitResult, fit_decay
 from .irf import IRF, IRFStore
-from .settings import HistSettings, Settings
+from .settings import Settings
 from .widgets.channels import ChannelPanel
 from .widgets.counters import CounterPanel
 from .widgets.fit_panel import FitPanel
@@ -64,7 +76,7 @@ class HistTab:
     fit_busy: bool = False
     last_fit_time: float = 0.0
     last_fit: FitResult | None = None
-    irf_axis: np.ndarray | None = None     # active IRF on this tab's axis
+    irf_axis: np.ndarray | None = None  # active IRF on this tab's axis
     irf_resampled: bool = False
 
 
@@ -103,8 +115,7 @@ class MainWindow(QMainWindow):
         self.counters = CounterPanel(self.names, SYNC_CH)
         left.addWidget(self.counters)
         thr_ranges = {ch: self.device.threshold_range(ch) for ch in range(len(self.names))}
-        dly_ranges = {ch: tuple(x * 1e9 for x in self.device.delay_range(ch))
-                      for ch in range(len(self.names))}
+        dly_ranges = {ch: tuple(x * 1e9 for x in self.device.delay_range(ch)) for ch in range(len(self.names))}
         self.channels = ChannelPanel(self.names, thr_ranges, dly_ranges)
         left.addWidget(self.channels)
         if self.device.is_simulator:
@@ -251,6 +262,7 @@ class MainWindow(QMainWindow):
         if s.window_geometry:
             try:
                 from PySide6.QtCore import QByteArray
+
                 self.restoreGeometry(QByteArray.fromHex(s.window_geometry.encode()))
             except Exception:
                 pass
@@ -313,9 +325,16 @@ class MainWindow(QMainWindow):
             self._warn("Reference and measure channel must differ.")
             return
         try:
-            self.device.hist_configure(idx, h.ref_ch, h.meas_ch, h.left_ns * 1e-9, h.right_ns * 1e-9,
-                                       h.bin_ps * 1e-12 if h.bin_ps > 0 else None,
-                                       h.multi_hit, h.accumulate)
+            self.device.hist_configure(
+                idx,
+                h.ref_ch,
+                h.meas_ch,
+                h.left_ns * 1e-9,
+                h.right_ns * 1e-9,
+                h.bin_ps * 1e-12 if h.bin_ps > 0 else None,
+                h.multi_hit,
+                h.accumulate,
+            )
             left, right, bw = self.device.hist_bounds(idx)
         except Exception as exc:
             log.warning("histogram %d configuration failed: %s", idx + 1, exc)
@@ -340,9 +359,12 @@ class MainWindow(QMainWindow):
             # safety: no reference signal, no acquisition
             ref_rate = self.counters.rates.get(h.ref_ch, 0.0)
             if ref_rate <= 0:
-                QMessageBox.warning(self, "No reference signal",
-                                    f"{self.names[h.ref_ch]} shows no counts. Check the SYNC cable, "
-                                    "the laser mode selector and the threshold before enabling.")
+                QMessageBox.warning(
+                    self,
+                    "No reference signal",
+                    f"{self.names[h.ref_ch]} shows no counts. Check the SYNC cable, "
+                    "the laser mode selector and the threshold before enabling.",
+                )
                 tab.config.set_enabled_state(False)
                 return
             self._apply_config(idx, quiet=True)
@@ -413,7 +435,9 @@ class MainWindow(QMainWindow):
             flags.append("bin overflow")
         tab.config.show_status(
             f"running | {int(bins.sum()):,} events | window {status.win_id} | {elapsed:.0f} s"
-            + (" | " + ", ".join(flags) if flags else ""), warning=bool(flags))
+            + (" | " + ", ".join(flags) if flags else ""),
+            warning=bool(flags),
+        )
         self._maybe_fit(tab)
 
     # ----------------------------------------------------------------- fit
@@ -427,9 +451,14 @@ class MainWindow(QMainWindow):
             return
         tab.fit_busy = True
         tab.last_fit_time = now
-        self.fit_requested.emit(tab.idx, tab.bins.copy(), float(tab.bin_ns), int(self.fit_panel.n_exp),
-                                None if tab.irf_axis is None else tab.irf_axis.copy(),
-                                self._laser_period_ns())
+        self.fit_requested.emit(
+            tab.idx,
+            tab.bins.copy(),
+            float(tab.bin_ns),
+            int(self.fit_panel.n_exp),
+            None if tab.irf_axis is None else tab.irf_axis.copy(),
+            self._laser_period_ns(),
+        )
 
     @Slot(int, object)
     def _on_fit_done(self, idx: int, r: FitResult) -> None:
@@ -465,8 +494,7 @@ class MainWindow(QMainWindow):
 
     # ----------------------------------------------------------------- IRF
     def _refresh_irf_list(self) -> None:
-        self.irf_panel.set_names(self.irf_store.names(),
-                                 self.active_irf.name if self.active_irf else "")
+        self.irf_panel.set_names(self.irf_store.names(), self.active_irf.name if self.active_irf else "")
 
     def _set_active_irf(self, name: str) -> None:
         if not name:
@@ -514,14 +542,18 @@ class MainWindow(QMainWindow):
         idx = self.tabw.currentIndex()
         tab = self.tabs[idx]
         if not tab.config.enable_btn.isChecked():
-            QMessageBox.information(self, "Histogram not running",
-                                    "Enable the histogram on this tab first, with the scatterer in "
-                                    "place and the emission filter removed.")
+            QMessageBox.information(
+                self,
+                "Histogram not running",
+                "Enable the histogram on this tab first, with the scatterer in place and the emission filter removed.",
+            )
             return
         if not tab.config.acc_chk.isChecked():
-            QMessageBox.information(self, "Accumulate is off",
-                                    "Switch Accumulate on for this histogram, so the IRF integrates "
-                                    "over the whole recording time.")
+            QMessageBox.information(
+                self,
+                "Accumulate is off",
+                "Switch Accumulate on for this histogram, so the IRF integrates over the whole recording time.",
+            )
             return
         self._rec_tab = tab
         self._rec_name = name
@@ -563,15 +595,17 @@ class MainWindow(QMainWindow):
         meta = {
             "device": self.device.name,
             "duration_s": self._rec_duration,
-            "ref_ch": h.ref_ch, "meas_ch": h.meas_ch,
+            "ref_ch": h.ref_ch,
+            "meas_ch": h.meas_ch,
             "sync_rate_hz": self.counters.sync_rate(),
             "meas_rate_hz": self.counters.rates.get(h.meas_ch, 0.0),
             "thresholds_v": dict(self.settings.thresholds_v),
             "delays_ns": dict(self.settings.delays_ns),
             "multi_hit": h.multi_hit,
         }
-        irf = IRF(name=self._rec_name, bins=tab.bins.astype(np.int64), left_ns=tab.left_ns,
-                  bin_ns=tab.bin_ns, meta=meta)
+        irf = IRF(
+            name=self._rec_name, bins=tab.bins.astype(np.int64), left_ns=tab.left_ns, bin_ns=tab.bin_ns, meta=meta
+        )
         path = self.irf_store.save(irf)
         self.statusBar().showMessage(f"IRF saved: {path}", 10000)
         self._set_active_irf(irf.name)
@@ -586,8 +620,11 @@ class MainWindow(QMainWindow):
         for tab in self.tabs:
             tab.config.set_enabled_state(False)
             tab.config.show_status("connection lost", warning=True)
-        QMessageBox.critical(self, "Connection lost", text + "\nRestart the application after "
-                             "checking the USB cable and the power supply.")
+        QMessageBox.critical(
+            self,
+            "Connection lost",
+            text + "\nRestart the application after checking the USB cable and the power supply.",
+        )
 
     def _save_settings(self) -> None:
         try:

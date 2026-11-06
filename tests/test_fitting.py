@@ -39,7 +39,7 @@ def test_average_lifetimes():
 
 
 def test_reconv_single_exp():
-    n, bw = 2000, 0.025                      # 50 ns window, 25 ps bins
+    n, bw = 2000, 0.025  # 50 ns window, 25 ps bins
     irf = make_irf(n, bw, 8.0, 0.12)
     data = make_decay(irf, bw, [1.0], [3.6], period_ns=50.0)
     r = fit_decay(data, bw, 1, irf=irf, period_ns=50.0)
@@ -51,7 +51,7 @@ def test_reconv_single_exp():
 def test_reconv_double_exp():
     n, bw = 2000, 0.025
     irf = make_irf(n, bw, 8.0, 0.12)
-    amps = np.array([0.3 / 0.8, 0.7 / 3.6])    # fractions 30 % / 70 % in amplitude... scaled below
+    amps = np.array([0.3 / 0.8, 0.7 / 3.6])  # fractions 30 % / 70 % in amplitude... scaled below
     amps = np.array([3.0, 7.0])
     taus = np.array([0.8, 3.6])
     data = make_decay(irf, bw, amps, taus, period_ns=50.0, total=5e6)
@@ -88,13 +88,14 @@ def test_tail_fit():
 def test_speed_and_rebin_on_long_histogram():
     """5333 bins of 2.34 ps like the Felix at 12.5 ns: a live fit must stay fast."""
     import time
+
     n, bw = 5333, 0.00234375
     irf = make_irf(n, bw, 2.0, 0.08)
     data = make_decay(irf, bw, [2.0, 1.0], [0.4, 1.0], period_ns=12.5, total=3e6)
     t0 = time.perf_counter()
     r = fit_decay(data, bw, 2, irf=irf, period_ns=12.5)
     dt = time.perf_counter() - t0
-    print(f"   5333-bin reconv fit: {dt*1000:.0f} ms, rebin x{r.rebin}, taus {r.taus_ns.round(3)}")
+    print(f"   5333-bin reconv fit: {dt * 1000:.0f} ms, rebin x{r.rebin}, taus {r.taus_ns.round(3)}")
     assert r.success and r.rebin == 3
     assert abs(r.taus_ns[0] - 0.4) / 0.4 < 0.10 and abs(r.taus_ns[1] - 1.0) < 0.10, r.taus_ns
     assert r.model.size == n and r.mask.size == n and r.resid.size == r.resid_t_ns.size
@@ -119,6 +120,7 @@ def test_irf_resample_keeps_shape():
 
 if __name__ == "__main__":
     import inspect
+
     failures = 0
     for name, fn in list(globals().items()):
         if name.startswith("test_") and inspect.isfunction(fn):

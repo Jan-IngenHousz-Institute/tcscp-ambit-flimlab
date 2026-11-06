@@ -151,3 +151,7 @@ pulses, about 70 µs each, reach the SPAD, and they add a flat background too sm
 
 [docs/](docs/README.md) explains how the pieces fit, the openJII upload and the release pipeline.
 Agents start at [AGENTS.md](AGENTS.md).
+
+Changes reach `main` only through a pull request whose title is a Conventional Commit, such as
+`fix(upload): keep each record with its run`. The title decides the next release, and lint, tests
+and the three builds must pass first. [docs/releasing.md](docs/releasing.md) has the details.

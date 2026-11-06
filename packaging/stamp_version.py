@@ -1,11 +1,12 @@
-"""Pick the release version and write it into phi2gui/__init__.py, for the release workflow.
+"""Write a version into phi2gui/__init__.py, for the release workflow and local builds.
 
-usage: python packaging/stamp_version.py <latest tag, e.g. v0.1.4, or empty>
+    python packaging/stamp_version.py 0.2.0
 
-The next version is the latest tag's patch + 1, unless ``__version__`` in the source is already
-higher (a person raised the minor or major version on purpose), in which case that one is used.
-Prints the version without the ``v``.
+semantic-release picks the number from the Conventional Commit titles merged since the last tag
+(see .releaserc.json and docs/releasing.md), and every build writes it in, so the executables and
+the release agree. A pull request's build uses the last tag plus "+pr.<number>".
 """
+
 from __future__ import annotations
 
 import re
@@ -13,27 +14,18 @@ import sys
 from pathlib import Path
 
 INIT = Path(__file__).resolve().parents[1] / "scripts" / "ambit-gate" / "phi2gui" / "__init__.py"
-VERSION_LINE = re.compile(rb'^__version__ = "(\d+)\.(\d+)\.(\d+)"', re.M)
-
-
-def next_version(latest_tag: str, source: tuple[int, int, int]) -> tuple[int, int, int]:
-    m = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", latest_tag.strip())
-    if not m:
-        return source
-    major, minor, patch = map(int, m.groups())
-    bumped = (major, minor, patch + 1)
-    return max(bumped, source)
+VERSION_LINE = re.compile(rb'^__version__ = "[^"]*"', re.M)
+VERSION = re.compile(r"\d+\.\d+\.\d+([-+][0-9A-Za-z.+-]+)?")
 
 
 def main(argv: list[str]) -> int:
-    raw = INIT.read_bytes()                       # bytes: the file starts with a UTF-8 BOM
-    m = VERSION_LINE.search(raw)
-    if not m:
+    if len(argv) != 2 or not VERSION.fullmatch(argv[1]):
+        raise SystemExit(f"usage: stamp_version.py <version like 1.2.3 or 1.2.3+pr.4>, got {argv[1:]}")
+    raw = INIT.read_bytes()  # bytes, so a UTF-8 BOM survives if the file has one
+    if not VERSION_LINE.search(raw):
         raise SystemExit(f"no __version__ line in {INIT}")
-    source = tuple(int(g) for g in m.groups())
-    version = ".".join(map(str, next_version(argv[1] if len(argv) > 1 else "", source)))
-    INIT.write_bytes(VERSION_LINE.sub(f'__version__ = "{version}"'.encode(), raw, count=1))
-    print(version)
+    INIT.write_bytes(VERSION_LINE.sub(f'__version__ = "{argv[1]}"'.encode(), raw, count=1))
+    print(argv[1])
     return 0
 
 

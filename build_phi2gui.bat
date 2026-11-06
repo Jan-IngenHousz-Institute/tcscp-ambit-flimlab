@@ -1,7 +1,7 @@
 @echo off
 rem Build the standalone phi2 GUI locally and zip it:
 rem     dist\phi2gui\phi2gui.exe            (plus _internal\, README.txt)
-rem     dist\phi2gui-v<version>-win64.zip   (version = phi2gui.__version__)
+rem     dist\phi2gui-v<version>-win64.zip   (version = phi2gui.__version__, 0.0.0 outside a release)
 rem
 rem Releases do not need this: .github\workflows\gui-release.yml builds and publishes Windows, Linux
 rem and macOS zips on every merge to main. This is for trying a Windows build on your own PC.

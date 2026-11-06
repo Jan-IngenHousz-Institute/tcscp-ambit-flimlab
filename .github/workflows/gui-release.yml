@@ -207,7 +207,8 @@ jobs:
           cp packaging/README-dist.txt dist/phi2gui/README.txt
           mkdir -p "$GITHUB_WORKSPACE/out"
           cd dist
-          zip -q -r -y "$GITHUB_WORKSPACE/out/$ZIP" phi2gui
+          type -a zip; zip -v | head -2; ls -la; du -sh phi2gui
+          zip -r -y "$GITHUB_WORKSPACE/out/$ZIP" phi2gui | tail -3
           ls -la "$GITHUB_WORKSPACE/out"
           test -s "$GITHUB_WORKSPACE/out/$ZIP"
 
